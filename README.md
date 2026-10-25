@@ -2,6 +2,9 @@
 
 An aesthetic, developer-crafted web application for crafting high-yield, ATS-optimized LaTeX resumes tailored for any job opening.
 
+🌐 **Live Web App**: [https://resumeai-editor.vercel.app](https://resumeai-editor.vercel.app)  
+📦 **Alternative Mirrors**: [resumeai-workspace.vercel.app](https://resumeai-workspace.vercel.app) • [resumeai-latex.vercel.app](https://resumeai-latex.vercel.app)
+
 ---
 
 ## 🌟 Key Architectural Features
