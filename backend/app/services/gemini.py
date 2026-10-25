@@ -389,13 +389,13 @@ async def convert_resume_to_latex(
     gemini_api_key: Optional[str] = None,
     model_name: Optional[str] = None
 ) -> Tuple[str, str]:
-    """Converts raw extracted resume text into an Overleaf-grade compilable LaTeX resume."""
+    """Converts raw extracted resume text into a compilable LaTeX resume."""
     client = get_gemini_client(gemini_api_key)
     active_model = model_name or settings.GEMINI_MODEL or "gemini-3.8-flash"
 
     if client:
         prompt = f"""You are a World-Class LaTeX Typesetting & Resume Architecture Expert.
-Convert the candidate's raw extracted resume text into clean, production-ready Overleaf-grade LaTeX code.
+Convert the candidate's raw extracted resume text into clean, production-ready LaTeX code.
 
 RAW EXTRACTED RESUME TEXT:
 {resume_text}

@@ -35,9 +35,9 @@ export default function LandingPage() {
         {/* Editorial Pill */}
         <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/80 px-3.5 py-1 text-xs font-mono text-zinc-300 backdrop-blur-md shadow-inner animate-in fade-in slide-in-from-top-2">
           <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Overleaf-Grade LaTeX Engine</span>
+          <span>Real-Time LaTeX Engine</span>
           <span className="text-zinc-600">/</span>
-          <span className="text-emerald-400">Sub-Second Tectonic Rust Engine</span>
+          <span className="text-emerald-400">Sub-Second Rust Compiler</span>
         </div>
 
         {/* Main Headline */}
@@ -49,7 +49,7 @@ export default function LandingPage() {
         </h1>
 
         <p className="mt-6 text-base sm:text-lg text-zinc-400 max-w-2xl font-normal leading-relaxed">
-          The developer-grade resume studio designed like Overleaf with deep ATS keyword optimization.
+          The developer-grade resume studio with deep ATS keyword optimization and visual text editing.
           Scrapes job postings, measures ATS compatibility, enforces typography hygiene, and asks honest questions instead of hallucinating skills.
         </p>
 
@@ -81,26 +81,26 @@ export default function LandingPage() {
           </Link>
         </div>
 
-        {/* Visual Product Showcase / Mock Overleaf Split Workspace */}
+        {/* Visual Product Showcase / Mock Split Workspace */}
         <div className="mt-14 w-full rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-2 sm:p-3 shadow-2xl backdrop-blur-md">
           <div className="flex items-center justify-between border-b border-zinc-800/80 px-4 py-2.5 text-xs">
             <div className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-full bg-rose-500/80" />
               <span className="h-2.5 w-2.5 rounded-full bg-amber-500/80" />
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
-              <span className="ml-2 font-mono text-zinc-400">texcraft-studio / alex_mercer_resume.tex</span>
+              <span className="ml-2 font-mono text-zinc-400">resumeai / resume.tex</span>
             </div>
             <div className="flex items-center gap-3 text-zinc-500 font-mono text-[11px]">
               <span className="text-emerald-400">ATS Score: 94%</span>
               <span>•</span>
-              <span>Tectonic Engine v0.17</span>
+              <span>Rust Compiler Engine</span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 text-left">
             {/* Editor preview mock */}
             <div className="rounded-xl border border-zinc-800/90 bg-zinc-950 p-4 font-mono text-xs text-zinc-300 space-y-2 overflow-hidden max-h-72">
-              <div className="text-zinc-600">% Overleaf-grade ATS standard</div>
+              <div className="text-zinc-600">% High-yield ATS standard</div>
               <div><span className="text-indigo-400">\documentclass</span>[letterpaper,10pt]{'{article}'}</div>
               <div><span className="text-indigo-400">\usepackage</span>{'{fullpage, titlesec, enumitem}'}</div>
               <div className="text-emerald-400/90 mt-2">\begin{'{document}'}</div>
@@ -182,7 +182,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-zinc-900 bg-zinc-950/80 py-6 text-center text-xs text-zinc-500 font-mono">
-        ResumeAI • Overleaf-Grade LaTeX Resume Builder &amp; ATS Optimizer
+        ResumeAI • Intelligent LaTeX Resume Builder &amp; ATS Optimizer
       </footer>
 
       {/* Global Resume Import & Template Selection Modal */}

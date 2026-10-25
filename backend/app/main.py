@@ -12,7 +12,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title="Overleaf-Grade LaTeX Resume Builder API",
+    title="ResumeAI API",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -36,7 +36,7 @@ app.include_router(settings_route.router)
 @app.get("/")
 async def root():
     return {
-        "app": "Overleaf-Grade LaTeX Resume Builder Backend",
+        "app": "ResumeAI Backend",
         "status": "online",
         "tectonic_available": True,
         "docs": "/docs"

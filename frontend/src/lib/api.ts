@@ -1,15 +1,15 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export const STORAGE_KEYS = {
-  GEMINI_API_KEY: "texcraft_gemini_api_key",
-  LATEX_DRAFT: "texcraft_latex_draft",
-  TARGET_JD: "texcraft_target_jd",
-  CACHED_SCORE: "texcraft_cached_score",
+  GEMINI_API_KEY: "resumeai_gemini_api_key",
+  LATEX_DRAFT: "resumeai_latex_draft",
+  TARGET_JD: "resumeai_target_jd",
+  CACHED_SCORE: "resumeai_cached_score",
 };
 
 export function getStoredApiKey(): string {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem(STORAGE_KEYS.GEMINI_API_KEY) || "";
+  return localStorage.getItem(STORAGE_KEYS.GEMINI_API_KEY) || localStorage.getItem("texcraft_gemini_api_key") || "";
 }
 
 export function setStoredApiKey(key: string): void {
@@ -20,11 +20,12 @@ export function setStoredApiKey(key: string): void {
 export function removeStoredApiKey(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(STORAGE_KEYS.GEMINI_API_KEY);
+  localStorage.removeItem("texcraft_gemini_api_key");
 }
 
 export function getStoredDraft(): string {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem(STORAGE_KEYS.LATEX_DRAFT) || "";
+  return localStorage.getItem(STORAGE_KEYS.LATEX_DRAFT) || localStorage.getItem("texcraft_latex_draft") || "";
 }
 
 export function setStoredDraft(code: string): void {

@@ -51,7 +51,7 @@ async def upload_and_convert_resume(
 ):
     """
     Accepts an uploaded PDF, DOCX, or TXT resume, extracts its contents,
-    converts it into Overleaf-grade ATS LaTeX via AI, and calculates its initial ATS score.
+    converts it into ATS-optimized LaTeX via AI, and calculates its initial ATS score.
     """
     try:
         content = await file.read()

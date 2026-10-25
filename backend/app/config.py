@@ -16,7 +16,7 @@ for p in env_paths:
         break
 
 class Settings(BaseModel):
-    PROJECT_NAME: str = "Overleaf-Grade LaTeX Resume Builder"
+    PROJECT_NAME: str = "ResumeAI Backend"
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")

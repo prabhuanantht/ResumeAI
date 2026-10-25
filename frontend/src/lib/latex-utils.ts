@@ -1,6 +1,5 @@
 /**
-/**
- * Overleaf-Grade LaTeX cleaning, sanitization, and SyncTeX text-to-source matching.
+ * LaTeX cleaning, sanitization, and SyncTeX text-to-source matching.
  */
 
 export function cleanLatex(code: string): { cleaned: string; emDashesReplaced: number } {
@@ -91,7 +90,7 @@ export interface LineMatchResult {
 }
 
 /**
- * Overleaf-grade exact text matching:
+ * Exact text matching:
  * Matches clicked text string directly to the exact corresponding line in the LaTeX source code
  * by comparing stripped text tokens against stripped LaTeX lines.
  */

@@ -163,7 +163,7 @@ CURATED_TEMPLATES = [
         "id": "swe_modern",
         "name": "Modern Software Engineer",
         "role": "Full Stack / Cloud Native",
-        "description": "Battle-tested Overleaf template with quantified metrics and Google X-Y-Z formula.",
+        "description": "Battle-tested ATS template with quantified metrics and Google X-Y-Z formula.",
         "latex_code": DEFAULT_PRIMARY_RESUME,
         "badge": "Popular",
     },

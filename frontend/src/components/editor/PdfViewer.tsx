@@ -84,7 +84,7 @@ export default function PdfViewer({
     }
   }, []);
 
-  // Crisp HiDPI Retina PDF Rendering onto Canvas (Overleaf Standard)
+  // Crisp HiDPI Retina PDF Rendering onto Canvas
   const renderPdfPage = useCallback(async () => {
     if (!pdfUrl || !canvasContainerRef.current) return;
 
@@ -169,7 +169,7 @@ export default function PdfViewer({
         return;
       }
 
-      // Extract text content and group into coherent text lines for Overleaf-grade SyncTeX
+      // Extract text content and group into coherent text lines for SyncTeX
       const textContent = await page.getTextContent();
       const rawItems: Array<{ str: string; left: number; top: number; width: number; height: number }> = [];
 
@@ -281,7 +281,7 @@ export default function PdfViewer({
     setZoom(Math.max(50, Math.min(200, newZoom)));
   };
 
-  // Overleaf Click-to-Source: click anywhere on the page jumps to the exact LaTeX line
+  // Click-to-Source: click anywhere on the page jumps to the exact line in editor
   const handlePaperClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!onNavigateToLine || pdfLines.length === 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -547,7 +547,7 @@ export default function PdfViewer({
           </div>
         )}
 
-        {/* Overleaf-Style Crisp Document Paper with Clickable Text SyncTeX */}
+        {/* Crisp Document Paper with Clickable Text SyncTeX */}
         {pdfUrl && !errorLog && (
           <div className="min-w-full w-max flex justify-center py-2 px-2">
             <div
@@ -558,7 +558,7 @@ export default function PdfViewer({
                 height: `${displayHeight}px`,
               }}
               className="relative shadow-[0_10px_35px_rgba(0,0,0,0.5),0_2px_10px_rgba(0,0,0,0.25)] rounded-sm border border-zinc-700/60 bg-white shrink-0 cursor-text select-text overflow-hidden transition-shadow"
-              title="Click or double-click any line to jump directly to it in the LaTeX editor"
+              title="Click or double-click any line to jump directly to it in the editor"
             >
               {/* Retina HiDPI Canvas Container */}
               <div
@@ -566,7 +566,7 @@ export default function PdfViewer({
                 className="block select-none pointer-events-none"
               />
 
-              {/* Overleaf-Style SyncTeX Click Indicator Flash */}
+              {/* SyncTeX Click Indicator Flash */}
               {activeHighlight && (
                 <div
                   style={{
