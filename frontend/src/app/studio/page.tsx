@@ -1,13 +1,25 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import dynamic from "next/dynamic";
 import Navbar from "@/components/navigation/Navbar";
 import LatexEditor from "@/components/editor/LatexEditor";
-import PdfViewer from "@/components/editor/PdfViewer";
 import AiAssistant from "@/components/editor/AiAssistant";
 import ResumeScorerDrawer from "@/components/editor/ResumeScorerDrawer";
 import ApiKeyModal from "@/components/settings/ApiKeyModal";
 import ResumeImportModal from "@/components/upload/ResumeImportModal";
+
+const PdfViewer = dynamic(() => import("@/components/editor/PdfViewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-zinc-950 text-zinc-500">
+      <div className="flex items-center gap-2 text-xs">
+        <span className="h-3 w-3 animate-spin rounded-full border border-emerald-400 border-t-transparent" />
+        <span>Loading PDF viewer...</span>
+      </div>
+    </div>
+  ),
+});
 import { 
   getProfile, 
   compilePdf, 
