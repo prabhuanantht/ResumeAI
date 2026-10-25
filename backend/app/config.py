@@ -1,11 +1,24 @@
 import os
+from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional
+from dotenv import load_dotenv
+
+# Search for .env in current dir, parent dir, or backend dir
+env_paths = [
+    Path(__file__).resolve().parent.parent / ".env",
+    Path(__file__).resolve().parent.parent.parent / ".env",
+    Path(".env"),
+]
+for p in env_paths:
+    if p.exists():
+        load_dotenv(p)
+        break
 
 class Settings(BaseModel):
     PROJECT_NAME: str = "Overleaf-Grade LaTeX Resume Builder"
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     DB_PATH: str = os.getenv("DB_PATH", os.path.expanduser("~/.gemini/resumebuilder.db"))
     CORS_ORIGINS: list[str] = [

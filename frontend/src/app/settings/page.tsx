@@ -22,7 +22,7 @@ export default function SettingsPage() {
     system_prompt: "",
     forbidden_words: ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"],
     enforce_no_em_dashes: true,
-    gemini_model: "gemini-2.5-flash",
+    gemini_model: "gemini-3.8-flash",
     gemini_api_key: "",
   });
   const [newWord, setNewWord] = useState("");
@@ -230,8 +230,8 @@ export default function SettingsPage() {
                   onChange={(e) => setSettings({ ...settings, gemini_model: e.target.value })}
                   className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 focus:border-emerald-500 focus:outline-none"
                 >
-                  <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended: Ultra-fast & high context)</option>
-                  <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast, free-tier friendly)</option>
+                  <option value="gemini-3.8-flash">Gemini 3.8 Flash (Recommended: Ultra-fast & high context)</option>
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                   <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep reasoning)</option>
                 </select>
               </div>

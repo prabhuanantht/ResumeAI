@@ -16,7 +16,7 @@ async def get_settings():
                     system_prompt=default_config.DEFAULT_SYSTEM_PROMPT,
                     forbidden_words=["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"],
                     enforce_no_em_dashes=True,
-                    gemini_model="gemini-2.5-flash",
+                    gemini_model="gemini-3.8-flash",
                     gemini_api_key=default_config.GEMINI_API_KEY
                 )
                 await db.execute("""
@@ -36,7 +36,7 @@ async def get_settings():
                 system_prompt=row[0] or default_config.DEFAULT_SYSTEM_PROMPT,
                 forbidden_words=json.loads(row[1]) if row[1] else ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"],
                 enforce_no_em_dashes=bool(row[2]),
-                gemini_model=row[3] or "gemini-2.5-flash",
+                gemini_model=row[3] or "gemini-3.8-flash",
                 gemini_api_key=row[4] or ""
             )
 

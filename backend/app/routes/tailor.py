@@ -30,7 +30,7 @@ async def generate_tailored_resume(req: TailorRequest):
 
         # 2. Fetch user settings
         system_prompt = req.user_system_prompt
-        gemini_model = "gemini-2.5-flash"
+        gemini_model = "gemini-3.8-flash"
         gemini_key = ""
         forbidden_words = ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
         
@@ -104,7 +104,7 @@ async def generate_tailored_resume(req: TailorRequest):
 @router.post("/chat-edit", response_model=ChatEditResponse)
 async def chat_edit(req: ChatEditRequest):
     async with get_db_connection() as db:
-        gemini_model = "gemini-2.5-flash"
+        gemini_model = "gemini-3.8-flash"
         gemini_key = ""
         async with db.execute("SELECT gemini_model, gemini_api_key FROM settings WHERE id = 'default_settings'") as cursor:
             s_row = await cursor.fetchone()

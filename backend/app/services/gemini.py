@@ -62,7 +62,7 @@ async def tailor_resume(
     """
     confirmed_skills = confirmed_skills or []
     declined_skills = declined_skills or []
-    active_model = model_name or settings.GEMINI_MODEL or "gemini-2.5-flash"
+    active_model = model_name or settings.GEMINI_MODEL or "gemini-3.8-flash"
     client = get_gemini_client(gemini_api_key)
 
     missing_skills = detect_skill_gaps(base_latex, job_description, confirmed_skills, declined_skills)
@@ -167,7 +167,7 @@ async def chat_edit_latex(
 ) -> Tuple[str, str, List[str]]:
     """In-editor AI assistant for making targeted edits to the LaTeX document."""
     client = get_gemini_client(gemini_api_key)
-    active_model = model_name or settings.GEMINI_MODEL or "gemini-2.5-flash"
+    active_model = model_name or settings.GEMINI_MODEL or "gemini-3.8-flash"
     
     if client:
         prompt = f"""You are an elite LaTeX resume editor.
