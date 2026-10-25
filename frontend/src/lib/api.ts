@@ -9,7 +9,7 @@ export const STORAGE_KEYS = {
 
 export function getStoredApiKey(): string {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem(STORAGE_KEYS.GEMINI_API_KEY) || localStorage.getItem("texcraft_gemini_api_key") || "";
+  return localStorage.getItem(STORAGE_KEYS.GEMINI_API_KEY) || "";
 }
 
 export function setStoredApiKey(key: string): void {
@@ -20,12 +20,11 @@ export function setStoredApiKey(key: string): void {
 export function removeStoredApiKey(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(STORAGE_KEYS.GEMINI_API_KEY);
-  localStorage.removeItem("texcraft_gemini_api_key");
 }
 
 export function getStoredDraft(): string {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem(STORAGE_KEYS.LATEX_DRAFT) || localStorage.getItem("texcraft_latex_draft") || "";
+  return localStorage.getItem(STORAGE_KEYS.LATEX_DRAFT) || "";
 }
 
 export function setStoredDraft(code: string): void {

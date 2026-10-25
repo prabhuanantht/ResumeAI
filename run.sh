@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================================="
-echo " Starting TeXCraft Studio (Overleaf LaTeX Resume Builder) "
+echo " Starting ResumeAI (AI-Powered LaTeX Resume Builder) "
 echo "=========================================================="
 
 # 1. Start FastAPI Backend
@@ -24,9 +24,9 @@ FRONTEND_PID=$!
 
 echo ""
 echo "=========================================================="
-echo " TeXCraft Studio is live!"
-echo " Web UI:  http://localhost:3000"
-echo " Backend: http://localhost:8000"
+echo " ResumeAI is live!"
+echo " Web UI:   http://localhost:3000"
+echo " Backend:  http://localhost:8000"
 echo " API Docs: http://localhost:8000/docs"
 echo "=========================================================="
 echo ""
