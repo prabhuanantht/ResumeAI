@@ -3,12 +3,12 @@ from typing import Optional, List, Dict, Any
 
 class Profile(BaseModel):
     id: str = "default_user"
-    name: str = "Alex Mercer"
-    email: str = "alex.mercer@gmail.com"
-    phone: str = "+1 (555) 349-2018"
-    github: str = "https://github.com/alexmercer"
-    linkedin: str = "https://linkedin.com/in/alexmercer"
-    website: str = "https://alexmercer.dev"
+    name: str = "Candidate"
+    email: str = ""
+    phone: str = ""
+    github: str = ""
+    linkedin: str = ""
+    website: str = ""
     primary_latex: str = ""
     skills: List[str] = []
     created_at: Optional[str] = None
@@ -44,6 +44,7 @@ class TailorRequest(BaseModel):
     confirmed_skills: Optional[List[str]] = []
     declined_skills: Optional[List[str]] = []
     skill_notes: Optional[Dict[str, str]] = {}
+    gemini_api_key: Optional[str] = None
 
 class TailorResponse(BaseModel):
     id: str
@@ -62,6 +63,7 @@ class ChatEditRequest(BaseModel):
     instruction: str
     job_description: Optional[str] = None
     user_system_prompt: Optional[str] = None
+    gemini_api_key: Optional[str] = None
 
 class ChatEditResponse(BaseModel):
     updated_latex: str

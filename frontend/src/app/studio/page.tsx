@@ -6,12 +6,16 @@ import LatexEditor from "@/components/editor/LatexEditor";
 import PdfViewer from "@/components/editor/PdfViewer";
 import AiAssistant from "@/components/editor/AiAssistant";
 import ResumeScorerDrawer from "@/components/editor/ResumeScorerDrawer";
+import ApiKeyModal from "@/components/settings/ApiKeyModal";
 import { 
   getProfile, 
   compilePdf, 
   validateLatex, 
   scoreResume,
   autoBoostResume,
+  getStoredApiKey,
+  getStoredDraft,
+  setStoredDraft,
   Profile 
 } from "@/lib/api";
 import { 
@@ -70,6 +74,29 @@ export default function StudioPage() {
   } | null>(null);
   const [showBoostBanner, setShowBoostBanner] = useState(false);
 
+  // Local Storage Autosave & API Key Status
+  const [lastSavedTime, setLastSavedTime] = useState<string>("");
+  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
+  const [apiKeyModalOpen, setApiKeyModalOpen] = useState<boolean>(false);
+  const [showKeyBanner, setShowKeyBanner] = useState<boolean>(true);
+
+  // Check API key configuration on mount
+  useEffect(() => {
+    const key = getStoredApiKey();
+    setHasApiKey(Boolean(key));
+  }, []);
+
+  // Autosave LaTeX draft to client localStorage
+  useEffect(() => {
+    if (!latexCode || latexCode.trim().length === 0) return;
+    const timer = setTimeout(() => {
+      setStoredDraft(latexCode);
+      const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      setLastSavedTime(timeStr);
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [latexCode]);
+
   // Compilation trigger with latency measurement
   const triggerCompile = useCallback(async (codeToCompile: string) => {
     if (!codeToCompile) return;
@@ -79,7 +106,7 @@ export default function StudioPage() {
       setErrorLog(null);
       setErrors([]);
 
-      const blob = await compilePdf(codeToCompile, "Alex_Mercer_Resume");
+      const blob = await compilePdf(codeToCompile, "Resume");
       const url = URL.createObjectURL(blob);
       setPdfUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
@@ -103,17 +130,25 @@ export default function StudioPage() {
     }
   }, []);
 
-  // Load profile resume on mount
+  // Load draft from local cache or server profile on mount
   useEffect(() => {
     async function loadInitial() {
       try {
+        const cachedDraft = getStoredDraft();
+        if (cachedDraft && cachedDraft.trim().length > 60) {
+          setLatexCode(cachedDraft);
+          triggerCompile(cachedDraft);
+          setLastSavedTime("Restored");
+          return;
+        }
+
         const profile = await getProfile();
         setActiveProfile(profile);
         const code = profile.primary_latex;
         setLatexCode(code);
         triggerCompile(code);
       } catch (e) {
-        console.error("Failed to load profile:", e);
+        console.error("Failed to load initial resume:", e);
       }
     }
     loadInitial();
@@ -234,6 +269,33 @@ export default function StudioPage() {
   return (
     <div className="flex h-[100dvh] flex-col bg-zinc-950 text-white overflow-hidden">
       <Navbar onCompile={() => triggerCompile(latexCode)} isCompiling={isCompiling} />
+
+      {/* Free Gemini API Key Setup Notice Banner */}
+      {!hasApiKey && showKeyBanner && (
+        <div className="flex items-center justify-between border-b border-amber-500/20 bg-amber-950/30 px-3.5 py-1.5 text-xs text-amber-200">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+            <span className="truncate">
+              Enable 1-Click AI Auto-Boost and ATS Job Tailoring by connecting your free Gemini API key (cached 100% locally on your machine).
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setApiKeyModalOpen(true)}
+              className="rounded-md bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 px-2.5 py-0.5 text-[11px] font-semibold text-amber-300 transition-colors"
+            >
+              Connect Free Key
+            </button>
+            <button
+              onClick={() => setShowKeyBanner(false)}
+              className="p-1 text-amber-400/60 hover:text-amber-300 transition-colors"
+              title="Dismiss"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Pro Toolbar: View Mode Switcher + Live ATS Score + 1-Click Auto Boost */}
       <div className="flex flex-wrap items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-3 py-1.5 gap-2 text-xs">
@@ -471,7 +533,7 @@ export default function StudioPage() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            <span className="text-zinc-300">Tectonic v0.17 (Rust Engine)</span>
+            <span className="text-zinc-300">Tectonic v0.17</span>
           </div>
           <span>•</span>
           <span className="text-zinc-500">{compileTimeMs}ms compile</span>
@@ -480,6 +542,15 @@ export default function StudioPage() {
             <ShieldCheck className="h-3 w-3" />
             0 Em Dashes
           </span>
+          {lastSavedTime && (
+            <>
+              <span>•</span>
+              <span className="text-zinc-400 flex items-center gap-1">
+                <Check className="h-3 w-3 text-emerald-400" />
+                <span>Autosaved locally ({lastSavedTime})</span>
+              </span>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-4">
@@ -490,6 +561,13 @@ export default function StudioPage() {
           <span className="text-zinc-500">UTF-8 LaTeX</span>
         </div>
       </footer>
+
+      {/* Global API Key Setup Modal */}
+      <ApiKeyModal
+        isOpen={apiKeyModalOpen}
+        onClose={() => setApiKeyModalOpen(false)}
+        onKeySaved={(k) => setHasApiKey(Boolean(k))}
+      />
     </div>
   );
 }

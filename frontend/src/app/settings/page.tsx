@@ -2,7 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import Navbar from "@/components/navigation/Navbar";
-import { getSettings, updateSettings, SettingsModel } from "@/lib/api";
+import { 
+  getSettings, 
+  updateSettings, 
+  SettingsModel, 
+  getStoredApiKey, 
+  setStoredApiKey, 
+  testApiKey 
+} from "@/lib/api";
 import { 
   Sliders, 
   Sparkles, 
@@ -14,7 +21,10 @@ import {
   Check, 
   X,
   Plus,
-  HelpCircle
+  HelpCircle,
+  ExternalLink,
+  Lock,
+  RefreshCw
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -47,6 +57,10 @@ export default function SettingsPage() {
     try {
       setIsSaving(true);
       await updateSettings(settings);
+      // Synchronize key to client local storage
+      if (settings.gemini_api_key) {
+        setStoredApiKey(settings.gemini_api_key);
+      }
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (e: any) {
@@ -258,9 +272,34 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
-            <p className="text-[11px] text-zinc-500 font-mono">
-              You can get a free Gemini API key anytime from Google AI Studio (aistudio.google.com). Even without an API key, the builder operates with a high-fidelity local algorithmic engine.
-            </p>
+            {/* Steps & Privacy Guarantee Box */}
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-zinc-300">
+                  How to get your free Gemini API key:
+                </span>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-medium underline"
+                >
+                  aistudio.google.com/app/apikey
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+              <ol className="list-decimal list-inside text-xs text-zinc-400 space-y-1">
+                <li>Sign in to Google AI Studio with any personal Google account.</li>
+                <li>Click <strong>"Create API Key"</strong> (100% free forever, no billing required).</li>
+                <li>Paste the key above and click <strong>Save Settings</strong>.</li>
+              </ol>
+              <div className="flex items-start gap-2 pt-2 border-t border-zinc-800 text-[11px] text-zinc-400">
+                <Lock className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                <span>
+                  <strong>🔒 Zero Cloud Transmission:</strong> Keys and resume data are stored 100% locally in your browser storage and local SQLite on this machine. They are never sent to any deployed cloud server or external analytics.
+                </span>
+              </div>
+            </div>
           </div>
         </form>
       </main>

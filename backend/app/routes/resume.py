@@ -1,8 +1,9 @@
 import json
 import uuid
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel
+from backend.app.config import settings
 from backend.app.database import get_db_connection
 from backend.app.models import Profile, TailorResponse, AtsBreakdown
 from backend.app.services.templates import DEFAULT_PRIMARY_RESUME
@@ -18,6 +19,7 @@ class ScoreRequest(BaseModel):
 class AutoBoostRequest(BaseModel):
     latex_code: str
     target_jd: Optional[str] = ""
+    gemini_api_key: Optional[str] = None
 
 class AutoBoostResponse(BaseModel):
     updated_latex: str
@@ -44,7 +46,10 @@ async def score_resume(req: ScoreRequest):
     return breakdown
 
 @router.post("/auto-boost", response_model=AutoBoostResponse)
-async def auto_boost_resume(req: AutoBoostRequest):
+async def auto_boost_resume(
+    req: AutoBoostRequest,
+    x_gemini_key: Optional[str] = Header(None)
+):
     async with get_db_connection() as db:
         gemini_model = "gemini-3.8-flash"
         gemini_key = ""
@@ -55,6 +60,8 @@ async def auto_boost_resume(req: AutoBoostRequest):
                 forbidden_words = json.loads(s_row[0]) if s_row[0] else forbidden_words
                 gemini_model = s_row[1] or gemini_model
                 gemini_key = s_row[2] or ""
+
+    active_key = req.gemini_api_key or x_gemini_key or gemini_key or settings.GEMINI_API_KEY
 
     # Calculate pre-boost score
     initial_breakdown = score_resume_against_job(
@@ -95,12 +102,12 @@ async def get_user_profile():
             if not row:
                 initial_profile = Profile(
                     id="default_user",
-                    name="Alex Mercer",
-                    email="alex.mercer@gmail.com",
-                    phone="+1 (555) 349-2018",
-                    github="https://github.com/alexmercer",
-                    linkedin="https://linkedin.com/in/alexmercer",
-                    website="https://alexmercer.dev",
+                    name="Candidate",
+                    email="",
+                    phone="",
+                    github="",
+                    linkedin="",
+                    website="",
                     primary_latex=DEFAULT_PRIMARY_RESUME,
                     skills=["Python", "TypeScript", "FastAPI", "Next.js", "Docker", "Kubernetes", "AWS", "SQL"]
                 )

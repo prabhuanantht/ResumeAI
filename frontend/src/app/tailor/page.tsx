@@ -10,6 +10,8 @@ import {
   generateTailoredResume, 
   compilePdf, 
   compileDocx, 
+  setStoredDraft,
+  setStoredTargetJd,
   TailorResponse, 
   SkillGapItem 
 } from "@/lib/api";
@@ -59,6 +61,9 @@ export default function TailorPage() {
       });
 
       setTailorResult(res);
+      // Cache locally for immediate editing in Studio
+      setStoredDraft(res.tailored_latex);
+      setStoredTargetJd(currentJd);
     } catch (e: any) {
       alert("Tailoring failed: " + (e.message || e));
     } finally {
@@ -82,6 +87,9 @@ export default function TailorPage() {
         declined_skills: declinedSkills,
       });
       setTailorResult(res);
+      // Cache locally for immediate editing in Studio
+      setStoredDraft(res.tailored_latex);
+      setStoredTargetJd(currentJd);
     } catch (e) {
       console.error(e);
     } finally {

@@ -1,5 +1,58 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export const STORAGE_KEYS = {
+  GEMINI_API_KEY: "texcraft_gemini_api_key",
+  LATEX_DRAFT: "texcraft_latex_draft",
+  TARGET_JD: "texcraft_target_jd",
+  CACHED_SCORE: "texcraft_cached_score",
+};
+
+export function getStoredApiKey(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(STORAGE_KEYS.GEMINI_API_KEY) || "";
+}
+
+export function setStoredApiKey(key: string): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.GEMINI_API_KEY, key.trim());
+}
+
+export function removeStoredApiKey(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(STORAGE_KEYS.GEMINI_API_KEY);
+}
+
+export function getStoredDraft(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(STORAGE_KEYS.LATEX_DRAFT) || "";
+}
+
+export function setStoredDraft(code: string): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.LATEX_DRAFT, code);
+}
+
+export function getStoredTargetJd(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(STORAGE_KEYS.TARGET_JD) || "";
+}
+
+export function setStoredTargetJd(jd: string): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.TARGET_JD, jd);
+}
+
+export function getAuthHeaders(): Record<string, string> {
+  const key = getStoredApiKey();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (key) {
+    headers["X-Gemini-Key"] = key;
+  }
+  return headers;
+}
+
 export interface Profile {
   id: string;
   name: string;
@@ -109,7 +162,7 @@ export async function generateTailoredResume(payload: {
 }): Promise<TailorResponse> {
   const res = await fetch(`${API_BASE}/api/tailor/generate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -127,7 +180,7 @@ export async function chatEditResume(payload: {
 }): Promise<{ updated_latex: string; explanation: string; changes: string[] }> {
   const res = await fetch(`${API_BASE}/api/tailor/chat-edit`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("AI refinement failed");
@@ -160,7 +213,7 @@ export async function autoBoostResume(payload: {
 }> {
   const res = await fetch(`${API_BASE}/api/resumes/auto-boost`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Auto-boost failed");
@@ -208,9 +261,25 @@ export async function getSettings(): Promise<SettingsModel> {
 export async function updateSettings(settings: SettingsModel): Promise<SettingsModel> {
   const res = await fetch(`${API_BASE}/api/settings`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(settings),
   });
   if (!res.ok) throw new Error("Failed to save settings");
+  return res.json();
+}
+
+export async function testApiKey(
+  apiKey: string,
+  model = "gemini-3.8-flash"
+): Promise<{ valid: boolean; model: string; message: string; response: string }> {
+  const res = await fetch(`${API_BASE}/api/settings/test-key`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key: apiKey, model }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Connection test failed." }));
+    throw new Error(err.detail || "API Key verification failed.");
+  }
   return res.json();
 }

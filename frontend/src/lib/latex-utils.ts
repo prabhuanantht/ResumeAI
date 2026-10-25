@@ -1,15 +1,16 @@
 /**
- * Client-side utility for LaTeX cleaning, validation, and SyncTeX click-to-source mapping
+/**
+ * Overleaf-Grade LaTeX cleaning, sanitization, and SyncTeX text-to-source matching.
  */
 
 export function cleanLatex(code: string): { cleaned: string; emDashesReplaced: number } {
   let count = 0;
+  // Zero em-dash enforcement: replace em-dashes '—' with LaTeX en-dash ' -- '
   const emDashRegex = /—/g;
   const matches = code.match(emDashRegex);
   if (matches) {
     count = matches.length;
   }
-  // Replace em-dash with LaTeX en-dash '--'
   const cleaned = code.replace(emDashRegex, " -- ");
   return { cleaned, emDashesReplaced: count };
 }
@@ -31,81 +32,141 @@ export function downloadText(content: string, filename: string) {
   downloadBlob(blob, filename);
 }
 
-export interface LatexAnchor {
-  label: string;
-  category: "header" | "education" | "experience" | "projects" | "skills" | "item";
-  lineNumber: number;
-  relativeY: number; // 0.0 to 1.0 approx vertical position on a standard 1-page resume
+/**
+ * Strips LaTeX markup, formatting commands, and environments to produce
+ * a clean human-readable text string for exact matching with PDF rendered text.
+ */
+export function stripLatexMarkup(latexLine: string): string {
+  if (!latexLine) return "";
+
+  let text = latexLine;
+
+  // Ignore comments
+  const commentIdx = text.indexOf("%");
+  if (commentIdx !== -1 && (commentIdx === 0 || text[commentIdx - 1] !== "\\")) {
+    text = text.substring(0, commentIdx);
+  }
+
+  // Remove common structure commands
+  text = text.replace(/\\item\s*/g, " ");
+  text = text.replace(/\\section\*?\{([^}]*)\}/g, " $1 ");
+  text = text.replace(/\\subsection\*?\{([^}]*)\}/g, " $1 ");
+  text = text.replace(/\\resumeItem\{([^}]*)\}/g, " $1 ");
+  text = text.replace(/\\resumeSubheading\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}/g, " $1 $2 $3 $4 ");
+  text = text.replace(/\\resumeProjectHeading\{([^}]*)\}\{([^}]*)\}/g, " $1 $2 ");
+  text = text.replace(/\\href\{[^}]*\}\{([^}]*)\}/g, " $1 ");
+  text = text.replace(/\\textbf\{([^}]*)\}/g, " $1 ");
+  text = text.replace(/\\textit\{([^}]*)\}/g, " $1 ");
+  text = text.replace(/\\underline\{([^}]*)\}/g, " $1 ");
+  text = text.replace(/\\scshape\s*/g, " ");
+  text = text.replace(/\\small\s*/g, " ");
+  text = text.replace(/\\large\s*/g, " ");
+  text = text.replace(/\\Huge\s*/g, " ");
+  text = text.replace(/\\vspace\*?\{[^}]*\}/g, " ");
+  text = text.replace(/\\hspace\*?\{[^}]*\}/g, " ");
+
+  // Replace escaped characters
+  text = text.replace(/\\%/g, "%");
+  text = text.replace(/\\&/g, "&");
+  text = text.replace(/\\\$/g, "$");
+  text = text.replace(/\\#/g, "#");
+  text = text.replace(/\\_/g, "_");
+  text = text.replace(/\\\\/g, " ");
+  text = text.replace(/--/g, "-");
+
+  // Remove any remaining backslash command
+  text = text.replace(/\\[a-zA-Z]+(\[[^\]]*\])?({[^}]*})?/g, " ");
+
+  // Remove braces and clean spaces
+  text = text.replace(/[{}]/g, " ");
+  text = text.replace(/\s+/g, " ").trim();
+
+  return text;
 }
 
-export function parseLatexAnchors(code: string): LatexAnchor[] {
-  const lines = code.split("\n");
-  const anchors: LatexAnchor[] = [];
+export interface LineMatchResult {
+  lineNumber: number;
+  snippet: string;
+  confidence: number;
+}
 
-  let currentSection = "header";
-  let expCount = 0;
-  let projCount = 0;
+/**
+ * Overleaf-grade exact text matching:
+ * Matches clicked text string directly to the exact corresponding line in the LaTeX source code
+ * by comparing stripped text tokens against stripped LaTeX lines.
+ */
+export function findLineByText(clickedText: string, latexCode: string): LineMatchResult | null {
+  if (!clickedText || !latexCode) return null;
 
-  lines.forEach((rawLine, idx) => {
-    const lineNum = idx + 1;
-    const line = rawLine.trim();
+  const rawTarget = clickedText.trim();
+  if (rawTarget.length < 2) return null;
 
-    if (line.includes("\\begin{center}") || line.includes("\\textbf{\\Huge")) {
-      anchors.push({ label: "Header & Contact", category: "header", lineNumber: lineNum, relativeY: 0.05 });
-    } else if (line.includes("\\section{Education}")) {
-      currentSection = "education";
-      anchors.push({ label: "Education", category: "education", lineNumber: lineNum, relativeY: 0.14 });
-    } else if (line.includes("\\section{Experience}")) {
-      currentSection = "experience";
-      anchors.push({ label: "Experience", category: "experience", lineNumber: lineNum, relativeY: 0.22 });
-    } else if (line.includes("\\section{Projects}")) {
-      currentSection = "projects";
-      anchors.push({ label: "Projects", category: "projects", lineNumber: lineNum, relativeY: 0.68 });
-    } else if (line.includes("\\section{Technical Skills}")) {
-      currentSection = "skills";
-      anchors.push({ label: "Technical Skills", category: "skills", lineNumber: lineNum, relativeY: 0.88 });
-    } else if (line.startsWith("\\resumeSubheading")) {
-      const matches = line.match(/\{([^}]+)\}/g);
-      const title = matches && matches.length >= 1 ? matches[0].replace(/[{}]/g, "") : "Position";
-      const org = matches && matches.length >= 3 ? matches[2].replace(/[{}]/g, "") : "";
-      const label = org ? `${org}` : title;
+  const lines = latexCode.split("\n");
+  const strippedTarget = stripLatexMarkup(rawTarget).toLowerCase();
+  const targetTokens = strippedTarget
+    .replace(/[^a-z0-9]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 3);
 
-      let calculatedY = 0.25;
-      if (currentSection === "experience") {
-        expCount++;
-        calculatedY = 0.22 + expCount * 0.13;
-      } else if (currentSection === "projects") {
-        projCount++;
-        calculatedY = 0.68 + projCount * 0.09;
+  let bestLine = -1;
+  let bestScore = 0;
+  let bestSnippet = "";
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    // Skip preamble lines (before \begin{document})
+    const strippedLine = stripLatexMarkup(rawLine).toLowerCase();
+    if (!strippedLine) continue;
+
+    // 1. Direct whole-phrase substring match
+    if (strippedLine.includes(strippedTarget) || (strippedTarget.length > 10 && strippedLine.length > 5 && strippedTarget.includes(strippedLine))) {
+      return {
+        lineNumber: i + 1,
+        snippet: rawLine.trim(),
+        confidence: 1.0,
+      };
+    }
+
+    // 2. Multi-token scoring for bullet points or headings
+    if (targetTokens.length > 0) {
+      let matchedCount = 0;
+      for (const token of targetTokens) {
+        if (strippedLine.includes(token)) {
+          matchedCount++;
+        }
       }
 
-      anchors.push({
-        label,
-        category: currentSection as any,
-        lineNumber: lineNum,
-        relativeY: Math.min(0.95, calculatedY),
-      });
-    }
-  });
-
-  return anchors;
-}
-
-export function findLineFromClickRatio(ratio: number, anchors: LatexAnchor[], totalLines: number): { lineNumber: number; label: string } {
-  if (!anchors || anchors.length === 0) {
-    return { lineNumber: Math.max(1, Math.min(totalLines, Math.round(ratio * totalLines))), label: "Code Section" };
-  }
-
-  let closest = anchors[0];
-  let minDiff = Math.abs(ratio - closest.relativeY);
-
-  for (let i = 1; i < anchors.length; i++) {
-    const diff = Math.abs(ratio - anchors[i].relativeY);
-    if (diff < minDiff) {
-      minDiff = diff;
-      closest = anchors[i];
+      const matchRatio = matchedCount / targetTokens.length;
+      if (matchedCount >= 2 && matchRatio > bestScore) {
+        bestScore = matchRatio;
+        bestLine = i + 1;
+        bestSnippet = rawLine.trim();
+      }
     }
   }
 
-  return { lineNumber: closest.lineNumber, label: closest.label };
+  if (bestLine !== -1 && bestScore >= 0.35) {
+    return {
+      lineNumber: bestLine,
+      snippet: bestSnippet,
+      confidence: bestScore,
+    };
+  }
+
+  // 3. Fallback for short section names (e.g., "EXPERIENCE", "EDUCATION", "SKILLS")
+  const targetClean = rawTarget.toLowerCase().replace(/[^a-z]/g, "");
+  if (targetClean.length >= 4) {
+    for (let i = 0; i < lines.length; i++) {
+      const lower = lines[i].toLowerCase();
+      if ((lower.includes("\\section") || lower.includes("\\subsection")) && lower.includes(targetClean)) {
+        return {
+          lineNumber: i + 1,
+          snippet: lines[i].trim(),
+          confidence: 0.9,
+        };
+      }
+    }
+  }
+
+  return null;
 }

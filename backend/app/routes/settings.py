@@ -1,10 +1,47 @@
 import json
-from fastapi import APIRouter
+import asyncio
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+from google import genai
 from backend.app.database import get_db_connection
 from backend.app.models import SettingsModel
 from backend.app.config import settings as default_config
 
 router = APIRouter(prefix="/api/settings", tags=["Settings"])
+
+class TestKeyPayload(BaseModel):
+    api_key: str
+    model: Optional[str] = "gemini-3.8-flash"
+
+@router.post("/test-key")
+async def test_api_key(payload: TestKeyPayload):
+    key = payload.api_key.strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="Please provide a valid Gemini API key.")
+    try:
+        def _test():
+            client = genai.Client(api_key=key)
+            resp = client.models.generate_content(
+                model=payload.model or "gemini-3.8-flash",
+                contents="Reply with the single word 'CONNECTED'."
+            )
+            return resp.text.strip() if resp.text else "CONNECTED"
+
+        test_result = await asyncio.wait_for(asyncio.to_thread(_test), timeout=10.0)
+        return {
+            "valid": True,
+            "model": payload.model or "gemini-3.8-flash",
+            "message": "Connected successfully to Google Gemini 3.8 Flash!",
+            "response": test_result
+        }
+    except Exception as e:
+        error_msg = str(e)
+        if "API_KEY_INVALID" in error_msg or "400" in error_msg:
+            detail = "Invalid API Key. Please verify the key from Google AI Studio."
+        else:
+            detail = f"Failed to connect: {error_msg}"
+        raise HTTPException(status_code=400, detail=detail)
 
 @router.get("", response_model=SettingsModel)
 async def get_settings():

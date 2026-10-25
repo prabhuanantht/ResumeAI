@@ -1,6 +1,8 @@
 import json
 import uuid
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Header
+from backend.app.config import settings
 from backend.app.database import get_db_connection
 from backend.app.models import TailorRequest, TailorResponse, ChatEditRequest, ChatEditResponse, SkillGapItem
 from backend.app.services.scraper import scrape_job_url
@@ -19,7 +21,10 @@ async def scrape_job(payload: dict):
     return data
 
 @router.post("/generate", response_model=TailorResponse)
-async def generate_tailored_resume(req: TailorRequest):
+async def generate_tailored_resume(
+    req: TailorRequest,
+    x_gemini_key: Optional[str] = Header(None)
+):
     async with get_db_connection() as db:
         # 1. Fetch user base resume if not provided
         base_latex = req.base_latex
@@ -43,7 +48,8 @@ async def generate_tailored_resume(req: TailorRequest):
                 gemini_model = s_row[2] or gemini_model
                 gemini_key = s_row[3] or ""
 
-        # 3. Call tailor engine
+        # 3. Call tailor engine with prioritized client key
+        active_key = req.gemini_api_key or x_gemini_key or gemini_key or settings.GEMINI_API_KEY
         job_title = req.job_title or "Software Engineer"
         company = req.company or "Target Company"
         job_desc = req.job_description or ""
@@ -56,7 +62,7 @@ async def generate_tailored_resume(req: TailorRequest):
             user_system_prompt=system_prompt,
             confirmed_skills=req.confirmed_skills,
             declined_skills=req.declined_skills,
-            gemini_api_key=gemini_key,
+            gemini_api_key=active_key,
             model_name=gemini_model
         )
 
@@ -102,7 +108,10 @@ async def generate_tailored_resume(req: TailorRequest):
         )
 
 @router.post("/chat-edit", response_model=ChatEditResponse)
-async def chat_edit(req: ChatEditRequest):
+async def chat_edit(
+    req: ChatEditRequest,
+    x_gemini_key: Optional[str] = Header(None)
+):
     async with get_db_connection() as db:
         gemini_model = "gemini-3.8-flash"
         gemini_key = ""
@@ -112,12 +121,13 @@ async def chat_edit(req: ChatEditRequest):
                 gemini_model = s_row[0] or gemini_model
                 gemini_key = s_row[1] or ""
 
+        active_key = req.gemini_api_key or x_gemini_key or gemini_key or settings.GEMINI_API_KEY
         updated_latex, explanation, changes = await chat_edit_latex(
             current_latex=req.current_latex,
             instruction=req.instruction,
             job_description=req.job_description,
             user_system_prompt=req.user_system_prompt,
-            gemini_api_key=gemini_key,
+            gemini_api_key=active_key,
             model_name=gemini_model
         )
         return ChatEditResponse(
