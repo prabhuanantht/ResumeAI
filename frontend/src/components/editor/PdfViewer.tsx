@@ -50,7 +50,7 @@ export default function PdfViewer({
   onViewModeChange,
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<any>(null);
   const renderSeqRef = useRef<number>(0);
 
@@ -86,7 +86,7 @@ export default function PdfViewer({
 
   // Crisp HiDPI Retina PDF Rendering onto Canvas (Overleaf Standard)
   const renderPdfPage = useCallback(async () => {
-    if (!pdfUrl || !canvasRef.current) return;
+    if (!pdfUrl || !canvasContainerRef.current) return;
 
     // Increment render sequence ID for this invocation
     const currentSeq = ++renderSeqRef.current;
@@ -99,7 +99,7 @@ export default function PdfViewer({
       // If a newer render was requested while loading the library, abort
       if (currentSeq !== renderSeqRef.current) return;
 
-      // Cancel any ongoing render task and wait for it to cleanly abort
+      // Cancel any ongoing render task
       if (renderTaskRef.current) {
         try {
           renderTaskRef.current.cancel();
@@ -110,18 +110,15 @@ export default function PdfViewer({
         renderTaskRef.current = null;
       }
 
-      // If another render was initiated while awaiting cancellation, abort
-      if (currentSeq !== renderSeqRef.current || !canvasRef.current) return;
+      if (currentSeq !== renderSeqRef.current || !canvasContainerRef.current) return;
 
       const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
       const pdfDoc = await loadingTask.promise;
 
-      // Check again after document loading
       if (currentSeq !== renderSeqRef.current) return;
 
       const page = await pdfDoc.getPage(1);
 
-      // Check again after page loading
       if (currentSeq !== renderSeqRef.current) return;
 
       // Retina / HiDPI Device Pixel Ratio (Minimum 2.0x for crisp Latin Modern text)
@@ -135,16 +132,16 @@ export default function PdfViewer({
       const cssViewport = page.getViewport({ scale });
       const renderViewport = page.getViewport({ scale: scale * dpr });
 
-      const canvas = canvasRef.current;
-      if (!canvas || currentSeq !== renderSeqRef.current) return;
-
-      const ctx = canvas.getContext("2d", { alpha: false });
-      if (!ctx || currentSeq !== renderSeqRef.current) return;
-
+      // Create a fresh detached canvas for this render operation to eliminate canvas-reuse collisions
+      const canvas = document.createElement("canvas");
+      canvas.className = "block select-none pointer-events-none";
       canvas.width = Math.round(renderViewport.width);
       canvas.height = Math.round(renderViewport.height);
       canvas.style.width = `${Math.round(cssViewport.width)}px`;
       canvas.style.height = `${Math.round(cssViewport.height)}px`;
+
+      const ctx = canvas.getContext("2d", { alpha: false });
+      if (!ctx || currentSeq !== renderSeqRef.current) return;
 
       // Fill pure white paper background prior to render to eliminate dark antialiasing fringing
       ctx.fillStyle = "#ffffff";
@@ -157,17 +154,6 @@ export default function PdfViewer({
         viewport: renderViewport,
       };
 
-      // Double-check no previous render is holding the canvas
-      if (renderTaskRef.current) {
-        try {
-          renderTaskRef.current.cancel();
-          await renderTaskRef.current.promise.catch(() => {});
-        } catch {}
-        renderTaskRef.current = null;
-      }
-
-      if (currentSeq !== renderSeqRef.current) return;
-
       const task = page.render(renderContext);
       renderTaskRef.current = task;
       await task.promise;
@@ -176,7 +162,12 @@ export default function PdfViewer({
         renderTaskRef.current = null;
       }
 
-      if (currentSeq !== renderSeqRef.current) return;
+      // If this render is still the latest, mount the newly rendered canvas into the container
+      if (currentSeq === renderSeqRef.current && canvasContainerRef.current) {
+        canvasContainerRef.current.replaceChildren(canvas);
+      } else {
+        return;
+      }
 
       // Extract text content and group into coherent text lines for Overleaf-grade SyncTeX
       const textContent = await page.getTextContent();
@@ -561,9 +552,9 @@ export default function PdfViewer({
               className="relative shadow-[0_10px_35px_rgba(0,0,0,0.5),0_2px_10px_rgba(0,0,0,0.25)] rounded-sm border border-zinc-700/60 bg-white shrink-0 cursor-text select-text overflow-hidden transition-shadow"
               title="Click or double-click any line to jump directly to it in the LaTeX editor"
             >
-              {/* Retina HiDPI Canvas */}
-              <canvas
-                ref={canvasRef}
+              {/* Retina HiDPI Canvas Container */}
+              <div
+                ref={canvasContainerRef}
                 className="block select-none pointer-events-none"
               />
 
