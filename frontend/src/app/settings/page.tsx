@@ -158,15 +158,15 @@ export default function SettingsPage() {
               </p>
             </div>
 
-            {/* Strict Em Dash Toggle */}
+            {/* Strict Typography Toggle */}
             <div className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/80 p-3.5">
               <div className="space-y-0.5">
                 <span className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
                   <ShieldAlert className="h-4 w-4 text-emerald-400" />
-                  Strictly Disallow Em Dashes (&ldquo;—&rdquo;)
+                  Strict Typography Hygiene (LaTeX En Dashes)
                 </span>
                 <p className="text-[11px] text-zinc-400">
-                  Enforces pure LaTeX standards. Em dashes cause compilation issues and ATS parsing breaks; replaces them with LaTeX en dashes (&ldquo;--&rdquo;).
+                  Enforces clean LaTeX standards for date ranges and sub-items without breaking ATS parsers.
                 </p>
               </div>
               <input

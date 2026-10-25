@@ -34,7 +34,7 @@ export default function LandingPage() {
           <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
           <span>Overleaf-Grade LaTeX Engine</span>
           <span className="text-zinc-600">/</span>
-          <span className="text-emerald-400">Strictly 0 Em Dashes</span>
+          <span className="text-emerald-400">Sub-Second Tectonic Rust Engine</span>
         </div>
 
         {/* Main Headline */}
@@ -144,7 +144,7 @@ export default function LandingPage() {
               <ShieldCheck className="h-5 w-5" />
             </div>
             <h3 className="text-base font-semibold text-white">
-              Zero Em Dashes & ATS Hygiene
+              Strict ATS & TeX Hygiene
             </h3>
             <p className="text-xs text-zinc-400 leading-relaxed">
               Standardizes all date spans with LaTeX en dashes (&ldquo;--&rdquo;) and eliminates unescaped tokens that break ATS parsers and compilation engines.

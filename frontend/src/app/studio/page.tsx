@@ -278,7 +278,7 @@ export default function StudioPage() {
 
   return (
     <div className="flex h-[100dvh] flex-col bg-zinc-950 text-white overflow-hidden">
-      <Navbar onCompile={() => triggerCompile(latexCode)} isCompiling={isCompiling} />
+      <Navbar />
 
       {/* Free Gemini API Key Setup Notice Banner */}
       {!hasApiKey && showKeyBanner && (
@@ -306,124 +306,6 @@ export default function StudioPage() {
           </div>
         </div>
       )}
-
-      {/* Pro Toolbar: View Mode Switcher + Live ATS Score + 1-Click Auto Boost */}
-      <div className="flex flex-wrap items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-3 py-1.5 gap-2 text-xs">
-        {/* View Mode Segmented Control (Works on Desktop PC and 11" iPad) */}
-        <div className="flex items-center gap-1.5">
-          <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-950/80 p-0.5 shadow-inner">
-            <button
-              onClick={() => setViewMode("editor")}
-              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all touch-manipulation ${
-                viewMode === "editor"
-                  ? "bg-zinc-800 text-white shadow-sm"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-              title="Maximize Code Editor"
-            >
-              <Code2 className="h-3.5 w-3.5" />
-              <span>Editor</span>
-            </button>
-
-            <button
-              onClick={() => setViewMode("split")}
-              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all touch-manipulation ${
-                viewMode === "split"
-                  ? "bg-zinc-800 text-white shadow-sm"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-              title="Side-by-Side Split Workspace"
-            >
-              <Columns className="h-3.5 w-3.5" />
-              <span>Split View</span>
-            </button>
-
-            <button
-              onClick={() => setViewMode("preview")}
-              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all touch-manipulation ${
-                viewMode === "preview"
-                  ? "bg-zinc-800 text-white shadow-sm"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-              title="Maximize PDF Preview"
-            >
-              <FileText className="h-3.5 w-3.5" />
-              <span>PDF Preview</span>
-            </button>
-          </div>
-
-          {/* Quick Preset Split Ratios on Desktop */}
-          {viewMode === "split" && (
-            <div className="hidden lg:flex items-center gap-1 text-[11px] text-zinc-500 font-mono pl-2">
-              <button
-                onClick={() => setSplitRatio(50)}
-                className="hover:text-zinc-300 transition-colors"
-                title="Reset to 50/50"
-              >
-                50:50
-              </button>
-              <span>•</span>
-              <button
-                onClick={() => setSplitRatio(60)}
-                className="hover:text-zinc-300 transition-colors"
-                title="60% Editor, 40% PDF"
-              >
-                60:40
-              </button>
-              <span>•</span>
-              <button
-                onClick={() => setSplitRatio(40)}
-                className="hover:text-zinc-300 transition-colors"
-                title="40% Editor, 60% PDF"
-              >
-                40:60
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Live Resume Score + 1-Click Auto Boost Action Cluster */}
-        <div className="flex items-center gap-2">
-          {/* Live Score Pill (Opens Drawer) */}
-          <button
-            onClick={() => setIsScoreOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-950/30 px-3 py-1 text-xs font-medium text-emerald-400 hover:bg-emerald-900/40 hover:border-emerald-500/50 transition-all touch-manipulation shadow-sm"
-            title="Open ATS Score Diagnostics & Benchmark"
-          >
-            <TrendingUp className="h-3.5 w-3.5" />
-            <span className="font-mono font-semibold">
-              ATS Score: {liveAtsScore ? `${liveAtsScore}%` : "Analyzing..."}
-            </span>
-          </button>
-
-          {/* 1-Click Instant Auto-Boost Button */}
-          <button
-            onClick={() => handleExecuteAutoBoost()}
-            disabled={isBoosting}
-            className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-400 px-3 py-1 text-xs font-bold text-zinc-950 shadow-md shadow-emerald-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 touch-manipulation"
-            title="Automatically enhance metrics, action verbs, and ATS keywords right now (⌘B)"
-          >
-            {isBoosting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Zap className="h-3.5 w-3.5" />
-            )}
-            <span>{isBoosting ? "Boosting..." : "Auto-Boost"}</span>
-            <kbd className="hidden md:inline-block rounded bg-emerald-600/30 px-1 text-[9px] font-mono">
-              ⌘B
-            </kbd>
-          </button>
-
-          <button
-            onClick={() => setIsAiOpen(true)}
-            className="hidden sm:flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800/80 px-2.5 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-700 transition-all touch-manipulation"
-            title="Open In-Editor AI Copilot"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
-            <span>AI Copilot</span>
-          </button>
-        </div>
-      </div>
 
       {/* Auto-Boost Banner Notification when completed */}
       {showBoostBanner && lastBoostResult && (
@@ -471,11 +353,19 @@ export default function StudioPage() {
             <LatexEditor
               code={latexCode}
               onChange={(val) => setLatexCode(val)}
-              onSave={() => triggerCompile(latexCode)}
-              errors={errors}
+              onCompile={() => triggerCompile(latexCode)}
               isCompiling={isCompiling}
+              errors={errors}
               targetLine={targetLine}
               targetLabel={targetLabel}
+              viewMode={viewMode}
+              onViewModeChange={(m) => setViewMode(m)}
+              liveAtsScore={liveAtsScore}
+              onOpenScore={() => setIsScoreOpen(true)}
+              onAutoBoost={() => handleExecuteAutoBoost()}
+              isBoosting={isBoosting}
+              onToggleAi={() => setIsAiOpen(!isAiOpen)}
+              isAiOpen={isAiOpen}
             />
           </div>
         )}
@@ -489,9 +379,12 @@ export default function StudioPage() {
             }}
             onDoubleClick={() => setSplitRatio(50)}
             title="Drag to resize panels • Double-click to reset 50/50"
-            className="group relative flex w-3 items-center justify-center cursor-col-resize hover:bg-emerald-500/20 active:bg-emerald-500/30 transition-colors z-20 shrink-0"
+            className="group relative flex w-3 items-center justify-center cursor-col-resize select-none shrink-0 z-20"
           >
-            <div className="h-8 w-1 rounded-full bg-zinc-700 group-hover:bg-emerald-400 group-active:bg-emerald-400 transition-colors" />
+            {/* Delicate shaped pill handle without rectangular highlight */}
+            <div className="flex h-10 w-1.5 items-center justify-center rounded-full bg-zinc-800/90 border border-zinc-700/60 shadow-sm group-hover:bg-emerald-400 group-hover:border-emerald-300 group-hover:h-16 group-hover:shadow-[0_0_12px_rgba(52,211,153,0.6)] group-active:bg-emerald-400 group-active:h-16 transition-all duration-200">
+              <div className="h-4 w-0.5 rounded-full bg-zinc-600 group-hover:bg-zinc-950 transition-colors" />
+            </div>
           </div>
         )}
 
@@ -549,11 +442,6 @@ export default function StudioPage() {
           </div>
           <span>•</span>
           <span className="text-zinc-500">{compileTimeMs}ms compile</span>
-          <span>•</span>
-          <span className="text-emerald-400 flex items-center gap-1">
-            <ShieldCheck className="h-3 w-3" />
-            0 Em Dashes
-          </span>
           {lastSavedTime && (
             <>
               <span>•</span>

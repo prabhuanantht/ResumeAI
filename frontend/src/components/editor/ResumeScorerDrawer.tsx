@@ -234,7 +234,7 @@ export default function ResumeScorerDrawer({
 
               <div className="rounded-lg bg-zinc-950/80 p-2 border border-zinc-800/80">
                 <div className="flex justify-between text-[11px] text-zinc-300">
-                  <span>Typography & 0 Em Dashes</span>
+                  <span>Typography & Hygiene</span>
                   <span className="font-mono text-emerald-400 font-bold">{breakdown.formatting_hygiene_score}%</span>
                 </div>
                 <div className="mt-1.5 h-1 w-full rounded-full bg-emerald-400" style={{ width: `${breakdown.formatting_hygiene_score}%` }} />

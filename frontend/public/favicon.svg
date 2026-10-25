@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <rect width="32" height="32" rx="8" fill="#09090b"/>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="7.5" stroke="#27272a"/>
+  <!-- TeX Document Outline -->
+  <path d="M8 7C8 5.89543 8.89543 5 10 5H19L24 10V25C24 26.1046 23.1046 27 22 27H10C8.89543 27 8 26.1046 8 25V7Z" fill="#18181b" stroke="#34d399" stroke-width="1.5"/>
+  <path d="M19 5V10H24" stroke="#34d399" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Stylized TeX T -->
+  <path d="M12 14H20M16 14V22" stroke="#10b981" stroke-width="1.75" stroke-linecap="round"/>
+</svg>

@@ -10,7 +10,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Scaling,
-  MousePointerClick
+  MousePointerClick,
+  ChevronDown
 } from "lucide-react";
 import { downloadBlob, downloadText, findLineByText } from "@/lib/latex-utils";
 import { compileDocx } from "@/lib/api";
@@ -54,6 +55,19 @@ export default function PdfViewer({
   const [pageSize, setPageSize] = useState<{ width: number; height: number }>({ width: 612, height: 792 });
   const [isRenderingPdf, setIsRenderingPdf] = useState(false);
   const [activeHighlight, setActiveHighlight] = useState<{ top: number; height: number } | null>(null);
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const downloadMenuRef = useRef<HTMLDivElement>(null);
+
+  // Click-outside handler to dismiss download menu
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(e.target as Node)) {
+        setDownloadMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Initialize PDF.js worker
   useEffect(() => {
@@ -337,33 +351,83 @@ export default function PdfViewer({
           )}
         </div>
 
-        {/* Right: Export Downloads Cluster */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Right: Single Compact Download Dropdown (ViewPort Maxing) */}
+        <div className="relative" ref={downloadMenuRef}>
           <button
-            onClick={handleDownloadPdf}
+            onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
             disabled={!pdfUrl || isCompiling}
-            className="flex items-center gap-1.5 rounded bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 transition-all disabled:opacity-40 touch-manipulation"
+            className="flex items-center gap-1.5 rounded-md bg-emerald-500/15 border border-emerald-500/40 px-2.5 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 transition-all disabled:opacity-40 shadow-sm touch-manipulation"
+            title="Download resume formats (.pdf, .docx, .tex)"
           >
-            <Download className="h-3.5 w-3.5" />
-            <span>PDF</span>
+            <Download className="h-3.5 w-3.5 text-emerald-400" />
+            <span className="hidden xs:inline">Download</span>
+            <ChevronDown className="h-3 w-3 opacity-70" />
           </button>
 
-          <button
-            onClick={handleDownloadWord}
-            disabled={isDownloadingWord || isCompiling}
-            className="flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-all disabled:opacity-40 touch-manipulation"
-          >
-            <FileType className="h-3.5 w-3.5 text-blue-400" />
-            <span>{isDownloadingWord ? "..." : "Word"}</span>
-          </button>
+          {downloadMenuOpen && (
+            <div className="absolute right-0 top-full mt-1.5 z-50 w-52 rounded-xl border border-zinc-800 bg-zinc-950/95 p-1.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95">
+              <button
+                onClick={() => {
+                  handleDownloadPdf();
+                  setDownloadMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-zinc-900 transition-colors group"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 shrink-0">
+                  <Download className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-zinc-200 group-hover:text-emerald-400 transition-colors">
+                    PDF Document (.pdf)
+                  </div>
+                  <div className="text-[10px] text-zinc-500 font-mono">
+                    Retina compiled print PDF
+                  </div>
+                </div>
+              </button>
 
-          <button
-            onClick={handleDownloadTex}
-            className="hidden sm:flex items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs font-medium text-zinc-400 hover:text-white transition-all touch-manipulation"
-          >
-            <FileText className="h-3.5 w-3.5 text-amber-400" />
-            <span>.tex</span>
-          </button>
+              <button
+                onClick={() => {
+                  handleDownloadWord();
+                  setDownloadMenuOpen(false);
+                }}
+                disabled={isDownloadingWord}
+                className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-zinc-900 transition-colors group disabled:opacity-50"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-400 shrink-0">
+                  <FileType className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-zinc-200 group-hover:text-blue-400 transition-colors">
+                    Word Document (.docx)
+                  </div>
+                  <div className="text-[10px] text-zinc-500 font-mono">
+                    {isDownloadingWord ? "Exporting..." : "ATS recruiter format"}
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  handleDownloadTex();
+                  setDownloadMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-zinc-900 transition-colors group"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 shrink-0">
+                  <FileText className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-zinc-200 group-hover:text-amber-400 transition-colors">
+                    LaTeX Source (.tex)
+                  </div>
+                  <div className="text-[10px] text-zinc-500 font-mono">
+                    Pure compilable markup
+                  </div>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

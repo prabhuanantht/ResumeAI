@@ -73,7 +73,7 @@ export default function AtsScoreCard({
     {
       label: "Typography Hygiene",
       val: breakdown.formatting_hygiene_score,
-      desc: `${breakdown.detected_em_dashes === 0 ? "0 em dashes (Perfect TeX standard)" : `${breakdown.detected_em_dashes} em dashes detected`}`,
+      desc: "Clean TeX typesetting and ATS structure",
     },
   ];
 

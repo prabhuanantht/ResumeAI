@@ -1,6 +1,7 @@
 import json
 import re
 import os
+import time
 import asyncio
 from typing import Dict, Any, List, Optional, Tuple
 from google import genai
@@ -8,6 +9,28 @@ from backend.app.config import settings
 from backend.app.models import AtsBreakdown, SkillGapItem, TailorResponse
 from backend.app.services.ats_scorer import score_resume_against_job, extract_keywords_from_text
 from backend.app.services.compiler import sanitize_latex
+
+FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+
+def generate_with_fallback(client, contents, preferred_model="gemini-3.8-flash", config=None):
+    candidates = [preferred_model] + [m for m in FALLBACK_MODELS if m != preferred_model]
+    last_err = None
+    for model in candidates:
+        for attempt in range(2):
+            try:
+                if config:
+                    return client.models.generate_content(model=model, contents=contents, config=config)
+                return client.models.generate_content(model=model, contents=contents)
+            except Exception as e:
+                err_str = str(e)
+                last_err = e
+                if "503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str:
+                    time.sleep(1.0)
+                    continue
+                if "404" in err_str:
+                    break
+                break
+    raise last_err
 
 def get_gemini_client(api_key: Optional[str] = None):
     key = api_key or settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
@@ -101,9 +124,10 @@ TASK:
 """
         try:
             def _call():
-                return client.models.generate_content(
-                    model=active_model,
+                return generate_with_fallback(
+                    client=client,
                     contents=prompt,
+                    preferred_model=active_model,
                     config={"response_mime_type": "application/json"}
                 )
             response = await asyncio.wait_for(asyncio.to_thread(_call), timeout=25.0)
@@ -180,9 +204,10 @@ CRITICAL RULES:
 """
         try:
             def _call():
-                return client.models.generate_content(
-                    model=active_model,
+                return generate_with_fallback(
+                    client=client,
                     contents=prompt,
+                    preferred_model=active_model,
                     config={"response_mime_type": "application/json"}
                 )
             response = await asyncio.wait_for(asyncio.to_thread(_call), timeout=25.0)
@@ -252,9 +277,10 @@ Return a JSON object with:
 """
         try:
             def _call():
-                return client.models.generate_content(
-                    model=active_model,
+                return generate_with_fallback(
+                    client=client,
                     contents=prompt,
+                    preferred_model=active_model,
                     config={"response_mime_type": "application/json"}
                 )
             response = await asyncio.wait_for(asyncio.to_thread(_call), timeout=25.0)

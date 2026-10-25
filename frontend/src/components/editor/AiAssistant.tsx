@@ -267,7 +267,7 @@ export default function AiAssistant({
                         <span>Typography:</span>
                         <span className="text-emerald-400 font-semibold flex items-center gap-1">
                           <ShieldCheck className="h-2.5 w-2.5" />
-                          0 Em Dashes
+                          Clean TeX
                         </span>
                       </div>
                     </div>
