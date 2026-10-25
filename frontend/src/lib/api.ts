@@ -147,6 +147,26 @@ export async function scoreResume(payload: {
   return res.json();
 }
 
+export async function autoBoostResume(payload: {
+  latex_code: string;
+  target_jd?: string;
+}): Promise<{
+  updated_latex: string;
+  explanation: string;
+  changes: string[];
+  original_score: number;
+  boosted_score: number;
+  ats_breakdown: AtsBreakdown;
+}> {
+  const res = await fetch(`${API_BASE}/api/resumes/auto-boost`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Auto-boost failed");
+  return res.json();
+}
+
 export async function compilePdf(latexCode: string, filename = "resume"): Promise<Blob> {
   const res = await fetch(`${API_BASE}/api/compile/pdf`, {
     method: "POST",

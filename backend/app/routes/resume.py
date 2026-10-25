@@ -1,18 +1,31 @@
 import json
 import uuid
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from backend.app.database import get_db_connection
 from backend.app.models import Profile, TailorResponse, AtsBreakdown
 from backend.app.services.templates import DEFAULT_PRIMARY_RESUME
 from backend.app.services.ats_scorer import score_resume_against_job
+from backend.app.services.gemini import auto_boost_latex
 
 router = APIRouter(prefix="/api/resumes", tags=["Resumes"])
 
 class ScoreRequest(BaseModel):
     latex_code: str
     job_description: Optional[str] = ""
+
+class AutoBoostRequest(BaseModel):
+    latex_code: str
+    target_jd: Optional[str] = ""
+
+class AutoBoostResponse(BaseModel):
+    updated_latex: str
+    explanation: str
+    changes: List[str]
+    original_score: int
+    boosted_score: int
+    ats_breakdown: AtsBreakdown
 
 @router.post("/score", response_model=AtsBreakdown)
 async def score_resume(req: ScoreRequest):
@@ -30,13 +43,56 @@ async def score_resume(req: ScoreRequest):
     )
     return breakdown
 
+@router.post("/auto-boost", response_model=AutoBoostResponse)
+async def auto_boost_resume(req: AutoBoostRequest):
+    async with get_db_connection() as db:
+        gemini_model = "gemini-3.8-flash"
+        gemini_key = ""
+        forbidden_words = ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
+        async with db.execute("SELECT forbidden_words, gemini_model, gemini_api_key FROM settings WHERE id = 'default_settings'") as cursor:
+            s_row = await cursor.fetchone()
+            if s_row:
+                forbidden_words = json.loads(s_row[0]) if s_row[0] else forbidden_words
+                gemini_model = s_row[1] or gemini_model
+                gemini_key = s_row[2] or ""
+
+    # Calculate pre-boost score
+    initial_breakdown = score_resume_against_job(
+        resume_latex=req.latex_code,
+        job_description=req.target_jd or "General Software Engineering, Distributed Systems, Cloud Architecture, Full Stack",
+        forbidden_words=forbidden_words
+    )
+
+    # Perform automated AI boost
+    boosted_latex, explanation, changes = await auto_boost_latex(
+        current_latex=req.latex_code,
+        target_jd=req.target_jd,
+        gemini_api_key=gemini_key,
+        model_name=gemini_model
+    )
+
+    # Calculate post-boost score
+    boosted_breakdown = score_resume_against_job(
+        resume_latex=boosted_latex,
+        job_description=req.target_jd or "General Software Engineering, Distributed Systems, Cloud Architecture, Full Stack",
+        forbidden_words=forbidden_words
+    )
+
+    return AutoBoostResponse(
+        updated_latex=boosted_latex,
+        explanation=explanation,
+        changes=changes,
+        original_score=initial_breakdown.overall_score,
+        boosted_score=boosted_breakdown.overall_score,
+        ats_breakdown=boosted_breakdown
+    )
+
 @router.get("/profile", response_model=Profile)
 async def get_user_profile():
     async with get_db_connection() as db:
         async with db.execute("SELECT * FROM profiles WHERE id = 'default_user'") as cursor:
             row = await cursor.fetchone()
             if not row:
-                # Initialize default profile
                 initial_profile = Profile(
                     id="default_user",
                     name="Alex Mercer",

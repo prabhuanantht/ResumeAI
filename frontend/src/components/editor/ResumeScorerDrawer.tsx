@@ -9,9 +9,13 @@ import {
   ShieldCheck, 
   TrendingUp, 
   Zap, 
-  RefreshCw,
-  HelpCircle,
-  FileText
+  RefreshCw, 
+  HelpCircle, 
+  FileText, 
+  Loader2,
+  ArrowUpRight,
+  RotateCcw,
+  Check
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { scoreResume, AtsBreakdown } from "@/lib/api";
@@ -20,16 +24,27 @@ interface ResumeScorerDrawerProps {
   latexCode: string;
   isOpen: boolean;
   onClose: () => void;
-  onQuickAiFix?: (instruction: string) => void;
+  onExecuteAutoBoost: (targetJd?: string) => Promise<void>;
+  isBoosting?: boolean;
   onScoreUpdated?: (score: number) => void;
+  lastBoostResult?: {
+    original_score: number;
+    boosted_score: number;
+    explanation: string;
+    changes: string[];
+  } | null;
+  onUndoBoost?: () => void;
 }
 
 export default function ResumeScorerDrawer({
   latexCode,
   isOpen,
   onClose,
-  onQuickAiFix,
+  onExecuteAutoBoost,
+  isBoosting = false,
   onScoreUpdated,
+  lastBoostResult,
+  onUndoBoost,
 }: ResumeScorerDrawerProps) {
   const [breakdown, setBreakdown] = useState<AtsBreakdown | null>(null);
   const [targetJd, setTargetJd] = useState<string>("");
@@ -102,8 +117,8 @@ export default function ResumeScorerDrawer({
         <div className="flex items-center gap-2">
           <button
             onClick={() => runScore()}
-            disabled={isScoring}
-            className="flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 hover:text-white"
+            disabled={isScoring || isBoosting}
+            className="flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 hover:text-white disabled:opacity-40"
             title="Recalculate Score"
           >
             <RefreshCw className={`h-3 w-3 ${isScoring ? "animate-spin" : ""}`} />
@@ -120,10 +135,42 @@ export default function ResumeScorerDrawer({
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
+        {/* Auto-Boost Highlight Success Card if just boosted */}
+        {lastBoostResult && (
+          <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/30 p-3.5 space-y-2.5 animate-in fade-in duration-300">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-bold text-emerald-300 text-xs">
+                <Zap className="h-4 w-4 text-emerald-400" />
+                Resume Successfully Auto-Boosted!
+              </span>
+              {onUndoBoost && (
+                <button
+                  onClick={onUndoBoost}
+                  className="flex items-center gap-1 text-[11px] font-mono text-zinc-400 hover:text-white underline"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  <span>Undo</span>
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-emerald-200/90 leading-relaxed">
+              {lastBoostResult.explanation}
+            </p>
+            <div className="space-y-1 pt-1 border-t border-emerald-500/20">
+              {lastBoostResult.changes.map((c, idx) => (
+                <div key={idx} className="flex items-start gap-1.5 text-[11px] text-zinc-300">
+                  <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                  <span>{c}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Score Meter Banner */}
         {breakdown && (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-400">
                   ATS Match Score
@@ -139,16 +186,27 @@ export default function ResumeScorerDrawer({
                 </span>
               </div>
 
-              {/* Quick AI fix button */}
-              {onQuickAiFix && (
-                <button
-                  onClick={() => onQuickAiFix("Rewrite bullet points to maximize ATS keywords and quantifiable metrics")}
-                  className="flex flex-col items-center gap-1 rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-2.5 text-emerald-400 hover:bg-emerald-500/20 transition-all text-center"
-                >
-                  <Sparkles className="h-4 w-4 text-emerald-400" />
-                  <span className="text-[10px] font-bold">Auto-Boost</span>
-                </button>
-              )}
+              {/* Instant 1-Click Auto-Boost Button */}
+              <button
+                onClick={() => onExecuteAutoBoost(targetJd)}
+                disabled={isBoosting}
+                className="group relative flex flex-col items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-400 p-3 text-zinc-950 font-bold shadow-lg shadow-emerald-500/20 hover:scale-[1.03] active:scale-[0.98] transition-all disabled:opacity-50 touch-manipulation min-w-[110px]"
+              >
+                {isBoosting ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="mt-1 text-[11px] tracking-tight">Boosting...</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-1">
+                      <Sparkles className="h-4 w-4 text-zinc-950 animate-pulse" />
+                      <span className="text-xs">Auto-Boost</span>
+                    </div>
+                    <span className="mt-0.5 text-[9px] font-mono opacity-80">Make It Better Now</span>
+                  </>
+                )}
+              </button>
             </div>
 
             {/* Sub-Scores Bar Grid */}
@@ -193,7 +251,7 @@ export default function ResumeScorerDrawer({
           </div>
         )}
 
-        {/* Optional Target Job Description Benchmarking */}
+        {/* Target Job Description Benchmarking */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3.5 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-zinc-200 flex items-center gap-1.5">
@@ -219,13 +277,23 @@ export default function ResumeScorerDrawer({
             rows={3}
             className="w-full resize-none rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-xs text-zinc-200 placeholder-zinc-500 focus:border-emerald-500 focus:outline-none"
           />
-          <button
-            onClick={() => runScore(targetJd)}
-            disabled={isScoring || !targetJd.trim()}
-            className="w-full rounded-md bg-zinc-800 hover:bg-zinc-700 py-1.5 text-[11px] font-semibold text-zinc-200 transition-colors disabled:opacity-40"
-          >
-            Calculate Match Against This Role
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => runScore(targetJd)}
+              disabled={isScoring || isBoosting || !targetJd.trim()}
+              className="flex-1 rounded-md bg-zinc-800 hover:bg-zinc-700 py-1.5 text-[11px] font-semibold text-zinc-200 transition-colors disabled:opacity-40"
+            >
+              Match Keywords
+            </button>
+            <button
+              onClick={() => onExecuteAutoBoost(targetJd)}
+              disabled={isBoosting}
+              className="flex items-center gap-1 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 px-3 py-1.5 text-[11px] font-semibold text-emerald-300 transition-colors disabled:opacity-40"
+            >
+              <Zap className="h-3 w-3" />
+              <span>Boost for this Job</span>
+            </button>
+          </div>
         </div>
 
         {/* Matched vs Missing Keywords */}
