@@ -50,6 +50,10 @@ export default function StudioPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
 
+  // SyncTeX Click-to-Source Line Navigation
+  const [targetLine, setTargetLine] = useState<number | null>(null);
+  const [targetLabel, setTargetLabel] = useState<string | null>(null);
+
   // Pro-Grade PC Split Screen Resizing
   const [splitRatio, setSplitRatio] = useState<number>(50); // percentage for left editor
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -211,6 +215,15 @@ export default function StudioPage() {
       setPreviousLatex(null);
       setLastBoostResult(null);
       setShowBoostBanner(false);
+    }
+  };
+
+  // SyncTeX Click-to-Source Navigation Handler
+  const handleNavigateToLine = (lineNumber: number, label: string) => {
+    setTargetLine(lineNumber);
+    setTargetLabel(label);
+    if (viewMode === "preview") {
+      setViewMode("split");
     }
   };
 
@@ -389,6 +402,8 @@ export default function StudioPage() {
               onSave={() => triggerCompile(latexCode)}
               errors={errors}
               isCompiling={isCompiling}
+              targetLine={targetLine}
+              targetLabel={targetLabel}
             />
           </div>
         )}
@@ -425,6 +440,7 @@ export default function StudioPage() {
               onRetry={() => triggerCompile(latexCode)}
               onOpenScore={() => setIsScoreOpen(true)}
               atsScore={liveAtsScore}
+              onNavigateToLine={handleNavigateToLine}
             />
           </div>
         )}

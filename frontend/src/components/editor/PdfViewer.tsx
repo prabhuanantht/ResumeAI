@@ -13,9 +13,11 @@ import {
   AlertTriangle,
   RefreshCw,
   Scaling,
-  Move
+  MousePointerClick,
+  Crosshair,
+  Compass
 } from "lucide-react";
-import { downloadBlob, downloadText } from "@/lib/latex-utils";
+import { downloadBlob, downloadText, parseLatexAnchors, findLineFromClickRatio, LatexAnchor } from "@/lib/latex-utils";
 import { compileDocx } from "@/lib/api";
 
 interface PdfViewerProps {
@@ -26,6 +28,7 @@ interface PdfViewerProps {
   onRetry: () => void;
   onOpenScore?: () => void;
   atsScore?: number | null;
+  onNavigateToLine?: (lineNumber: number, label: string) => void;
 }
 
 const BASE_WIDTH = 810;
@@ -39,16 +42,27 @@ export default function PdfViewer({
   onRetry,
   onOpenScore,
   atsScore,
+  onNavigateToLine,
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const pageContainerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(100);
   const [isDownloadingWord, setIsDownloadingWord] = useState(false);
   const [isFitWidth, setIsFitWidth] = useState(false);
 
+  // SyncTeX Click-to-Source State
+  const [clickToSourceActive, setClickToSourceActive] = useState(true);
+  const [lastJump, setLastJump] = useState<{ line: number; label: string } | null>(null);
+  const [hoverBeacon, setHoverBeacon] = useState<{ y: number; label: string; line: number } | null>(null);
+
+  // Parse document section anchors from current LaTeX source
+  const anchors = React.useMemo(() => parseLatexAnchors(latexCode), [latexCode]);
+  const totalLines = React.useMemo(() => latexCode.split("\n").length, [latexCode]);
+
   // Fit Width logic: responsive to 11-inch iPad (834px portrait / 1194px landscape)
   const handleFitWidth = () => {
     if (!containerRef.current) return;
-    const availableWidth = containerRef.current.clientWidth - 32; // minus padding
+    const availableWidth = containerRef.current.clientWidth - 32;
     if (availableWidth > 0) {
       const calculatedZoom = Math.min(180, Math.max(40, Math.floor((availableWidth / BASE_WIDTH) * 100)));
       setZoom(calculatedZoom);
@@ -56,7 +70,6 @@ export default function PdfViewer({
     }
   };
 
-  // Auto-fit on small screens or 11" iPads on mount/resize if desired
   useEffect(() => {
     const handleResize = () => {
       if (isFitWidth && containerRef.current) {
@@ -70,6 +83,31 @@ export default function PdfViewer({
   const handleZoomChange = (newZoom: number) => {
     setIsFitWidth(false);
     setZoom(Math.max(40, Math.min(200, newZoom)));
+  };
+
+  // Handle click on PDF preview to jump to LaTeX line
+  const handlePageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!pageContainerRef.current || !onNavigateToLine) return;
+    const rect = pageContainerRef.current.getBoundingClientRect();
+    const clickY = e.clientY - rect.top;
+    const ratio = Math.max(0, Math.min(1, clickY / rect.height));
+
+    const { lineNumber, label } = findLineFromClickRatio(ratio, anchors, totalLines);
+    setLastJump({ line: lineNumber, label });
+    onNavigateToLine(lineNumber, label);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!pageContainerRef.current) return;
+    const rect = pageContainerRef.current.getBoundingClientRect();
+    const clickY = e.clientY - rect.top;
+    const ratio = Math.max(0, Math.min(1, clickY / rect.height));
+    const { lineNumber, label } = findLineFromClickRatio(ratio, anchors, totalLines);
+    setHoverBeacon({ y: clickY, label, line: lineNumber });
+  };
+
+  const handleMouseLeave = () => {
+    setHoverBeacon(null);
   };
 
   const handleDownloadPdf = () => {
@@ -140,11 +178,19 @@ export default function PdfViewer({
             <span>Fit Width</span>
           </button>
 
+          {/* Click-to-Source Toggle Indicator */}
           <button
-            onClick={() => handleZoomChange(100)}
-            className="hidden sm:inline-flex rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] font-mono text-zinc-400 hover:text-white transition-colors touch-manipulation"
+            onClick={() => setClickToSourceActive(!clickToSourceActive)}
+            className={`flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-mono transition-colors touch-manipulation ${
+              clickToSourceActive
+                ? "border-emerald-500/50 bg-emerald-950/40 text-emerald-300 shadow-sm"
+                : "border-zinc-800 bg-zinc-900 text-zinc-400"
+            }`}
+            title="Click anywhere on the preview to jump to that line in LaTeX code"
           >
-            100%
+            <MousePointerClick className="h-3.5 w-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">Click-to-Source:</span>
+            <span>{clickToSourceActive ? "ON" : "OFF"}</span>
           </button>
 
           {/* Quick Score Trigger in Preview Header if available */}
@@ -189,6 +235,26 @@ export default function PdfViewer({
         </div>
       </div>
 
+      {/* SyncTeX Section Quick Jumper Pills Strip */}
+      {anchors.length > 0 && onNavigateToLine && (
+        <div className="flex items-center gap-1.5 overflow-x-auto border-b border-zinc-800/80 bg-zinc-950/80 px-3 py-1 text-[10px] font-mono text-zinc-400 scrollbar-none shrink-0">
+          <span className="text-zinc-500 shrink-0 flex items-center gap-1">
+            <Compass className="h-3 w-3 text-emerald-400" />
+            Jump:
+          </span>
+          {anchors.map((a, idx) => (
+            <button
+              key={idx}
+              onClick={() => onNavigateToLine(a.lineNumber, a.label)}
+              className="rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-emerald-500/40 px-2 py-0.5 text-zinc-300 hover:text-emerald-300 transition-colors whitespace-nowrap shrink-0"
+              title={`Click to scroll LaTeX to line ${a.lineNumber}`}
+            >
+              {a.label} <span className="text-zinc-500 text-[9px]">L{a.lineNumber}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* PDF Viewport with Full Horizontal and Vertical Scroll Support */}
       <div
         ref={containerRef}
@@ -199,7 +265,7 @@ export default function PdfViewer({
       >
         {/* Loading overlay */}
         {isCompiling && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-zinc-950/70 backdrop-blur-sm">
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-zinc-950/70 backdrop-blur-sm">
             <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/90 px-4 py-2.5 shadow-xl">
               <RefreshCw className="h-4 w-4 animate-spin text-emerald-400" />
               <span className="text-xs font-medium text-zinc-200">Compiling TeX with Tectonic...</span>
@@ -227,15 +293,21 @@ export default function PdfViewer({
           </div>
         )}
 
-        {/* Scroll Container: Uses min-w-full & w-max so horizontal scrolling works in both directions without clipping! */}
+        {/* Scroll Container */}
         {pdfUrl && !errorLog && (
           <div className="min-w-full w-max flex justify-center py-2 px-2">
             <div
+              ref={pageContainerRef}
+              onClick={clickToSourceActive ? handlePageClick : undefined}
+              onMouseMove={clickToSourceActive ? handleMouseMove : undefined}
+              onMouseLeave={handleMouseLeave}
               style={{
                 width: `${scaledWidth}px`,
                 height: `${scaledHeight}px`,
               }}
-              className="relative transition-all duration-150 ease-out shadow-2xl rounded-sm overflow-hidden border border-zinc-800 bg-white shrink-0"
+              className={`relative transition-all duration-150 ease-out shadow-2xl rounded-sm overflow-hidden border border-zinc-800 bg-white shrink-0 ${
+                clickToSourceActive ? "cursor-crosshair" : "cursor-default"
+              }`}
             >
               <iframe
                 src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
@@ -245,9 +317,21 @@ export default function PdfViewer({
                   height: `${BASE_HEIGHT}px`,
                   transform: `scale(${zoom / 100})`,
                   transformOrigin: "top left",
+                  pointerEvents: clickToSourceActive ? "none" : "auto", // Allow parent div to intercept clicks in click-to-source mode!
                 }}
                 className="bg-white border-none block"
               />
+
+              {/* Interactive Hover Beacon for SyncTeX */}
+              {clickToSourceActive && hoverBeacon && (
+                <div
+                  style={{ top: `${hoverBeacon.y - 12}px` }}
+                  className="pointer-events-none absolute left-2 z-20 flex items-center gap-1.5 rounded-full bg-zinc-950/90 border border-emerald-400/80 px-2 py-0.5 text-[10px] font-mono text-emerald-300 shadow-xl backdrop-blur animate-in fade-in"
+                >
+                  <Crosshair className="h-3 w-3 text-emerald-400" />
+                  <span>Click to edit: {hoverBeacon.label} (L{hoverBeacon.line})</span>
+                </div>
+              )}
             </div>
           </div>
         )}

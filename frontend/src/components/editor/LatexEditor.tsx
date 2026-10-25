@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
-import { Check, Sparkles, AlertCircle, Copy, RotateCcw, ShieldAlert } from "lucide-react";
+import { Check, Sparkles, AlertCircle, Copy, RotateCcw, ShieldAlert, Crosshair } from "lucide-react";
 import { cleanLatex } from "@/lib/latex-utils";
 
 // Dynamic import of Monaco to prevent SSR issues
@@ -14,6 +14,8 @@ interface LatexEditorProps {
   onSave?: () => void;
   errors?: Array<{ line: string | number; message: string }>;
   isCompiling?: boolean;
+  targetLine?: number | null;
+  targetLabel?: string | null;
 }
 
 export default function LatexEditor({
@@ -22,14 +24,52 @@ export default function LatexEditor({
   onSave,
   errors = [],
   isCompiling = false,
+  targetLine = null,
+  targetLabel = null,
 }: LatexEditorProps) {
   const [copied, setCopied] = React.useState(false);
   const [emDashCount, setEmDashCount] = React.useState(0);
+  const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+  const decorationsRef = useRef<string[]>([]);
 
   useEffect(() => {
     const { emDashesReplaced } = cleanLatex(code);
     setEmDashCount(emDashesReplaced);
   }, [code]);
+
+  // Handle SyncTeX Click-to-Source from PDF preview
+  useEffect(() => {
+    if (targetLine && editorRef.current && monacoRef.current) {
+      editorRef.current.revealLineInCenter(targetLine);
+      editorRef.current.setPosition({ lineNumber: targetLine, column: 1 });
+      editorRef.current.focus();
+
+      // Flash emerald highlight decoration
+      decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, [
+        {
+          range: new monacoRef.current.Range(targetLine, 1, targetLine, 1),
+          options: {
+            isWholeLine: true,
+            className: "bg-emerald-500/25 border-l-4 border-emerald-400 font-semibold",
+          },
+        },
+      ]);
+
+      const timer = setTimeout(() => {
+        if (editorRef.current) {
+          decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, []);
+        }
+      }, 2500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [targetLine]);
+
+  const handleEditorDidMount = (editor: any, monaco: any) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+  };
 
   const handleFixEmDashes = () => {
     const { cleaned } = cleanLatex(code);
@@ -56,6 +96,14 @@ export default function LatexEditor({
           <span className="text-zinc-500 font-mono">
             {lineCount} lines
           </span>
+
+          {/* SyncTeX Target Indicator */}
+          {targetLine && targetLabel && (
+            <span className="hidden sm:inline-flex items-center gap-1 rounded bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 text-[10px] font-mono text-emerald-300 animate-in fade-in">
+              <Crosshair className="h-3 w-3 text-emerald-400 animate-pulse" />
+              <span>Jumped to L{targetLine}: {targetLabel}</span>
+            </span>
+          )}
         </div>
 
         {/* Em Dash Hygiene and Actions */}
@@ -93,6 +141,7 @@ export default function LatexEditor({
           theme="vs-dark"
           value={code}
           onChange={(val) => onChange(val || "")}
+          onMount={handleEditorDidMount}
           options={{
             fontSize: 13,
             fontFamily: "Geist Mono, JetBrains Mono, Menlo, monospace",
