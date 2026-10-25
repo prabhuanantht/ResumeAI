@@ -52,6 +52,7 @@ export default function PdfViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<any>(null);
+  const renderSeqRef = useRef<number>(0);
 
   const [zoom, setZoom] = useState(100);
   const [isDownloadingWord, setIsDownloadingWord] = useState(false);
@@ -87,12 +88,18 @@ export default function PdfViewer({
   const renderPdfPage = useCallback(async () => {
     if (!pdfUrl || !canvasRef.current) return;
 
+    // Increment render sequence ID for this invocation
+    const currentSeq = ++renderSeqRef.current;
+
     try {
       setIsRenderingPdf(true);
       const pdfjsLib = await import("pdfjs-dist");
       pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 
-      // Cancel any ongoing render task and await cancellation before re-rendering
+      // If a newer render was requested while loading the library, abort
+      if (currentSeq !== renderSeqRef.current) return;
+
+      // Cancel any ongoing render task and wait for it to cleanly abort
       if (renderTaskRef.current) {
         try {
           renderTaskRef.current.cancel();
@@ -103,11 +110,19 @@ export default function PdfViewer({
         renderTaskRef.current = null;
       }
 
-      if (!canvasRef.current) return;
+      // If another render was initiated while awaiting cancellation, abort
+      if (currentSeq !== renderSeqRef.current || !canvasRef.current) return;
 
       const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
       const pdfDoc = await loadingTask.promise;
+
+      // Check again after document loading
+      if (currentSeq !== renderSeqRef.current) return;
+
       const page = await pdfDoc.getPage(1);
+
+      // Check again after page loading
+      if (currentSeq !== renderSeqRef.current) return;
 
       // Retina / HiDPI Device Pixel Ratio (Minimum 2.0x for crisp Latin Modern text)
       const dpr = typeof window !== "undefined" ? Math.max(window.devicePixelRatio || 1, 2) : 2;
@@ -121,10 +136,10 @@ export default function PdfViewer({
       const renderViewport = page.getViewport({ scale: scale * dpr });
 
       const canvas = canvasRef.current;
-      if (!canvas) return;
+      if (!canvas || currentSeq !== renderSeqRef.current) return;
 
       const ctx = canvas.getContext("2d", { alpha: false });
-      if (!ctx) return;
+      if (!ctx || currentSeq !== renderSeqRef.current) return;
 
       canvas.width = Math.round(renderViewport.width);
       canvas.height = Math.round(renderViewport.height);
@@ -142,10 +157,26 @@ export default function PdfViewer({
         viewport: renderViewport,
       };
 
+      // Double-check no previous render is holding the canvas
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+          await renderTaskRef.current.promise.catch(() => {});
+        } catch {}
+        renderTaskRef.current = null;
+      }
+
+      if (currentSeq !== renderSeqRef.current) return;
+
       const task = page.render(renderContext);
       renderTaskRef.current = task;
       await task.promise;
-      renderTaskRef.current = null;
+
+      if (renderTaskRef.current === task) {
+        renderTaskRef.current = null;
+      }
+
+      if (currentSeq !== renderSeqRef.current) return;
 
       // Extract text content and group into coherent text lines for Overleaf-grade SyncTeX
       const textContent = await page.getTextContent();
@@ -192,18 +223,37 @@ export default function PdfViewer({
         }
       }
 
-      setPdfLines(groups);
-    } catch (err: any) {
-      if (err?.name !== "RenderingCancelledException") {
-        console.error("PDF Render error:", err);
+      if (currentSeq === renderSeqRef.current) {
+        setPdfLines(groups);
       }
+    } catch (err: any) {
+      if (
+        err?.name === "RenderingCancelledException" ||
+        err?.message?.includes("Cannot use the same canvas") ||
+        err?.message?.includes("Rendering cancelled")
+      ) {
+        // Expected cancellation when a newer render takes precedence
+        return;
+      }
+      console.error("PDF Render error:", err);
     } finally {
-      setIsRenderingPdf(false);
+      if (currentSeq === renderSeqRef.current) {
+        setIsRenderingPdf(false);
+      }
     }
   }, [pdfUrl, zoom]);
 
   useEffect(() => {
     renderPdfPage();
+    return () => {
+      // Invalidate sequence so in-flight render aborts immediately
+      renderSeqRef.current++;
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {}
+      }
+    };
   }, [renderPdfPage]);
 
   // Fit Width logic: responsive to desktop and 11-inch iPad
