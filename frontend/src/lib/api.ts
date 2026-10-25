@@ -177,7 +177,15 @@ export async function chatEditResume(payload: {
   instruction: string;
   job_description?: string;
   user_system_prompt?: string;
-}): Promise<{ updated_latex: string; explanation: string; changes: string[] }> {
+}): Promise<{
+  updated_latex: string;
+  explanation: string;
+  changes: string[];
+  score_before?: number;
+  score_after?: number;
+  ats_breakdown_before?: AtsBreakdown;
+  ats_breakdown_after?: AtsBreakdown;
+}> {
   const res = await fetch(`${API_BASE}/api/tailor/chat-edit`, {
     method: "POST",
     headers: getAuthHeaders(),

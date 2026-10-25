@@ -1,8 +1,15 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Check, Sparkles, AlertCircle, Copy, RotateCcw, ShieldAlert, Crosshair } from "lucide-react";
+import { 
+  Check, 
+  Copy, 
+  ShieldAlert, 
+  Undo2, 
+  Redo2, 
+  AlertCircle 
+} from "lucide-react";
 import { cleanLatex } from "@/lib/latex-utils";
 
 // Dynamic import of Monaco to prevent SSR issues
@@ -27,15 +34,37 @@ export default function LatexEditor({
   targetLine = null,
   targetLabel = null,
 }: LatexEditorProps) {
-  const [copied, setCopied] = React.useState(false);
-  const [emDashCount, setEmDashCount] = React.useState(0);
+  const [copied, setCopied] = useState(false);
+  const [emDashCount, setEmDashCount] = useState(0);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const decorationsRef = useRef<string[]>([]);
+  const isInternalChangeRef = useRef(false);
 
   useEffect(() => {
     const { emDashesReplaced } = cleanLatex(code);
     setEmDashCount(emDashesReplaced);
+  }, [code]);
+
+  // When external/AI code changes arrive, apply them as a single undoable transaction
+  useEffect(() => {
+    if (!editorRef.current) return;
+    const currentVal = editorRef.current.getValue();
+    if (code !== currentVal && !isInternalChangeRef.current) {
+      const model = editorRef.current.getModel();
+      if (model) {
+        editorRef.current.pushUndoStop();
+        editorRef.current.executeEdits("ai-assistant-edit", [
+          {
+            range: model.getFullModelRange(),
+            text: code,
+            forceMoveMarkers: true,
+          },
+        ]);
+        editorRef.current.pushUndoStop();
+      }
+    }
+    isInternalChangeRef.current = false;
   }, [code]);
 
   // Handle SyncTeX Click-to-Source from PDF preview
@@ -71,6 +100,25 @@ export default function LatexEditor({
     monacoRef.current = monaco;
   };
 
+  const handleEditorChange = (val: string | undefined) => {
+    isInternalChangeRef.current = true;
+    onChange(val || "");
+  };
+
+  const handleUndo = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.trigger("toolbar", "undo", null);
+      editorRef.current.focus();
+    }
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.trigger("toolbar", "redo", null);
+      editorRef.current.focus();
+    }
+  }, []);
+
   const handleFixEmDashes = () => {
     const { cleaned } = cleanLatex(code);
     onChange(cleaned);
@@ -87,23 +135,34 @@ export default function LatexEditor({
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl">
       {/* Editor Sub-header */}
-      <div className="flex h-10 items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-4 text-xs">
-        <div className="flex items-center gap-3">
+      <div className="flex h-10 items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-3 sm:px-4 text-xs">
+        <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
             <span className="font-mono text-zinc-300 font-medium">resume.tex</span>
           </div>
-          <span className="text-zinc-500 font-mono">
+
+          <span className="text-zinc-500 font-mono text-[11px]">
             {lineCount} lines
           </span>
 
-          {/* SyncTeX Target Indicator */}
-          {targetLine && targetLabel && (
-            <span className="hidden sm:inline-flex items-center gap-1 rounded bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 text-[10px] font-mono text-emerald-300 animate-in fade-in">
-              <Crosshair className="h-3 w-3 text-emerald-400 animate-pulse" />
-              <span>Jumped to L{targetLine}: {targetLabel}</span>
-            </span>
-          )}
+          {/* Undo / Redo Toolbar Controls */}
+          <div className="flex items-center rounded-md border border-zinc-800 bg-zinc-900/90 p-0.5 ml-1">
+            <button
+              onClick={handleUndo}
+              className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors touch-manipulation"
+              title="Undo (⌘Z / Ctrl+Z)"
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={handleRedo}
+              className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors touch-manipulation"
+              title="Redo (⌘⇧Z / Ctrl+Y)"
+            >
+              <Redo2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Em Dash Hygiene and Actions */}
@@ -124,7 +183,7 @@ export default function LatexEditor({
 
           <button
             onClick={handleCopy}
-            title="Copy LaTeX"
+            title="Copy LaTeX source code"
             className="flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400 hover:text-zinc-200 transition-colors"
           >
             {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
@@ -140,7 +199,7 @@ export default function LatexEditor({
           language="latex"
           theme="vs-dark"
           value={code}
-          onChange={(val) => onChange(val || "")}
+          onChange={handleEditorChange}
           onMount={handleEditorDidMount}
           options={{
             fontSize: 13,

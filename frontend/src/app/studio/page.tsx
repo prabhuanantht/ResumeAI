@@ -16,6 +16,7 @@ import {
   getStoredApiKey,
   getStoredDraft,
   setStoredDraft,
+  getStoredTargetJd,
   Profile 
 } from "@/lib/api";
 import { 
@@ -79,11 +80,14 @@ export default function StudioPage() {
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   const [apiKeyModalOpen, setApiKeyModalOpen] = useState<boolean>(false);
   const [showKeyBanner, setShowKeyBanner] = useState<boolean>(true);
+  const [targetJd, setTargetJd] = useState<string>("");
 
   // Check API key configuration on mount
   useEffect(() => {
     const key = getStoredApiKey();
     setHasApiKey(Boolean(key));
+    const savedJd = getStoredTargetJd();
+    if (savedJd) setTargetJd(savedJd);
   }, []);
 
   // Autosave LaTeX draft to client localStorage
@@ -202,9 +206,15 @@ export default function StudioPage() {
     };
   }, [isDragging]);
 
-  const handleApplyAi = (newCode: string) => {
+  const handleApplyAi = (newCode: string, label?: string) => {
+    setPreviousLatex(latexCode);
     setLatexCode(newCode);
     triggerCompile(newCode);
+  };
+
+  const handleUndoAi = (previousCode: string) => {
+    setLatexCode(previousCode);
+    triggerCompile(previousCode);
   };
 
   // Immediate 1-Click Auto-Boost Execution
@@ -523,6 +533,8 @@ export default function StudioPage() {
         <AiAssistant
           currentLatex={latexCode}
           onApplyChange={handleApplyAi}
+          onUndoChange={handleUndoAi}
+          targetJd={targetJd}
           isOpen={isAiOpen}
           onClose={() => setIsAiOpen(false)}
         />

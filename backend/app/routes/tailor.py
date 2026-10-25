@@ -115,11 +115,22 @@ async def chat_edit(
     async with get_db_connection() as db:
         gemini_model = "gemini-3.8-flash"
         gemini_key = ""
-        async with db.execute("SELECT gemini_model, gemini_api_key FROM settings WHERE id = 'default_settings'") as cursor:
+        forbidden_words = ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
+        async with db.execute("SELECT gemini_model, gemini_api_key, forbidden_words FROM settings WHERE id = 'default_settings'") as cursor:
             s_row = await cursor.fetchone()
             if s_row:
                 gemini_model = s_row[0] or gemini_model
                 gemini_key = s_row[1] or ""
+                if len(s_row) > 2 and s_row[2]:
+                    forbidden_words = json.loads(s_row[2])
+
+        # Baseline ATS Score Before Edit
+        target_jd = req.job_description or "General Software Engineering, Distributed Systems, Cloud Architecture, Full Stack"
+        ats_before = score_resume_against_job(
+            resume_latex=req.current_latex,
+            job_description=target_jd,
+            forbidden_words=forbidden_words
+        )
 
         active_key = req.gemini_api_key or x_gemini_key or gemini_key or settings.GEMINI_API_KEY
         updated_latex, explanation, changes = await chat_edit_latex(
@@ -130,8 +141,20 @@ async def chat_edit(
             gemini_api_key=active_key,
             model_name=gemini_model
         )
+
+        # ATS Score After Edit
+        ats_after = score_resume_against_job(
+            resume_latex=updated_latex,
+            job_description=target_jd,
+            forbidden_words=forbidden_words
+        )
+
         return ChatEditResponse(
             updated_latex=updated_latex,
             explanation=explanation,
-            changes=changes
+            changes=changes,
+            score_before=ats_before.overall_score,
+            score_after=ats_after.overall_score,
+            ats_breakdown_before=ats_before,
+            ats_breakdown_after=ats_after
         )

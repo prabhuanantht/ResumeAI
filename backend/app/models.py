@@ -69,6 +69,10 @@ class ChatEditResponse(BaseModel):
     updated_latex: str
     explanation: str
     changes: List[str]
+    score_before: Optional[int] = None
+    score_after: Optional[int] = None
+    ats_breakdown_before: Optional[AtsBreakdown] = None
+    ats_breakdown_after: Optional[AtsBreakdown] = None
 
 class CompileRequest(BaseModel):
     latex_code: str
