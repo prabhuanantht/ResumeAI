@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TeXCraft — Overleaf-Grade LaTeX Resume Builder & ATS Tailor",
-  description: "Craft high-yield LaTeX resumes tailored for ATS parsing with sub-second compilation and intelligent skill gap diagnostics.",
+  title: "ResumeAI — Intelligent Resume Builder & ATS Tailor",
+  description: "Craft high-yield resumes tailored for ATS parsing with instant compilation, visual editing, and intelligent AI skill gap diagnostics.",
   icons: {
     icon: "/favicon.svg",
   },

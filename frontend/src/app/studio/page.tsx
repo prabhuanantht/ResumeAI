@@ -362,8 +362,6 @@ export default function StudioPage() {
               onViewModeChange={(m) => setViewMode(m)}
               liveAtsScore={liveAtsScore}
               onOpenScore={() => setIsScoreOpen(true)}
-              onAutoBoost={() => handleExecuteAutoBoost()}
-              isBoosting={isBoosting}
               onToggleAi={() => setIsAiOpen(!isAiOpen)}
               isAiOpen={isAiOpen}
             />
@@ -406,6 +404,8 @@ export default function StudioPage() {
               onOpenScore={() => setIsScoreOpen(true)}
               atsScore={liveAtsScore}
               onNavigateToLine={handleNavigateToLine}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
             />
           </div>
         )}
@@ -422,7 +422,7 @@ export default function StudioPage() {
           onUndoBoost={handleUndoBoost}
         />
 
-        {/* AI Assistant Drawer */}
+        {/* AI Assistant Drawer with 1-Click Auto-Boost */}
         <AiAssistant
           currentLatex={latexCode}
           onApplyChange={handleApplyAi}
@@ -430,6 +430,8 @@ export default function StudioPage() {
           targetJd={targetJd}
           isOpen={isAiOpen}
           onClose={() => setIsAiOpen(false)}
+          onExecuteAutoBoost={handleExecuteAutoBoost}
+          isBoosting={isBoosting}
         />
       </main>
 

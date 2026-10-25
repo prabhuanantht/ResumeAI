@@ -43,6 +43,8 @@ interface AiAssistantProps {
   targetJd?: string;
   isOpen: boolean;
   onClose: () => void;
+  onExecuteAutoBoost?: () => void;
+  isBoosting?: boolean;
 }
 
 const QUICK_ACTIONS = [
@@ -60,6 +62,8 @@ export default function AiAssistant({
   targetJd = "",
   isOpen,
   onClose,
+  onExecuteAutoBoost,
+  isBoosting = false,
 }: AiAssistantProps) {
   const [prompt, setPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -153,6 +157,46 @@ export default function AiAssistant({
 
       {/* Chat Thread */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+        {/* 1-Click Auto-Boost Hero Card inside Copilot */}
+        {onExecuteAutoBoost && (
+          <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/40 via-zinc-900 to-teal-950/20 p-3 space-y-2.5 shadow-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 shrink-0">
+                  <Zap className="h-4 w-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
+                    1-Click Auto-Boost
+                    <span className="font-mono text-[9px] text-zinc-400 bg-zinc-800 border border-zinc-700 px-1 py-0.2 rounded">⌘B</span>
+                  </h4>
+                  <p className="text-[11px] text-zinc-400">
+                    Rewrites bullet points with Google X-Y-Z formula.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => onExecuteAutoBoost()}
+              disabled={isBoosting || isLoading}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold py-2 text-xs transition-all shadow-md active:scale-[0.98] disabled:opacity-50"
+            >
+              {isBoosting ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  <span>Boosting Resume...</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="h-3.5 w-3.5 fill-current" />
+                  <span>Auto-Boost Resume Now</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
         {/* Welcome Card & Quick Chips */}
         {history.length === 0 && (
           <div className="space-y-3">

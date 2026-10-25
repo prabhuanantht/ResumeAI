@@ -10,8 +10,9 @@ import {
   AlertTriangle,
   RefreshCw,
   Scaling,
-  MousePointerClick,
-  ChevronDown
+  ChevronDown,
+  Code2,
+  Columns
 } from "lucide-react";
 import { downloadBlob, downloadText, findLineByText } from "@/lib/latex-utils";
 import { compileDocx } from "@/lib/api";
@@ -32,6 +33,8 @@ interface PdfViewerProps {
   onOpenScore?: () => void;
   atsScore?: number | null;
   onNavigateToLine?: (lineNumber: number, label: string) => void;
+  viewMode?: "split" | "editor" | "preview";
+  onViewModeChange?: (mode: "split" | "editor" | "preview") => void;
 }
 
 export default function PdfViewer({
@@ -43,6 +46,8 @@ export default function PdfViewer({
   onOpenScore,
   atsScore,
   onNavigateToLine,
+  viewMode,
+  onViewModeChange,
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -87,14 +92,18 @@ export default function PdfViewer({
       const pdfjsLib = await import("pdfjs-dist");
       pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 
-      // Cancel any ongoing render task
+      // Cancel any ongoing render task and await cancellation before re-rendering
       if (renderTaskRef.current) {
         try {
           renderTaskRef.current.cancel();
+          await renderTaskRef.current.promise.catch(() => {});
         } catch {
           // ignore cancel error
         }
+        renderTaskRef.current = null;
       }
+
+      if (!canvasRef.current) return;
 
       const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
       const pdfDoc = await loadingTask.promise;
@@ -136,6 +145,7 @@ export default function PdfViewer({
       const task = page.render(renderContext);
       renderTaskRef.current = task;
       await task.promise;
+      renderTaskRef.current = null;
 
       // Extract text content and group into coherent text lines for Overleaf-grade SyncTeX
       const textContent = await page.getTextContent();
@@ -291,22 +301,54 @@ export default function PdfViewer({
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl">
       {/* PDF Header Controls */}
       <div className="flex flex-wrap min-h-10 items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-3 py-1.5 gap-2 text-xs">
-        {/* Left: View & Zoom Controls */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Left: View Switcher (Restores split/editor from full preview) + Zoom Controls */}
+        <div className="flex items-center gap-1.5">
+          {onViewModeChange && (
+            <div className="flex items-center rounded-md border border-zinc-800 bg-zinc-950 p-0.5">
+              <button
+                onClick={() => onViewModeChange("editor")}
+                className={`p-1 rounded transition-colors ${
+                  viewMode === "editor" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
+                }`}
+                title="Code Editor only"
+              >
+                <Code2 className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => onViewModeChange("split")}
+                className={`p-1 rounded transition-colors ${
+                  viewMode === "split" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
+                }`}
+                title="Split View"
+              >
+                <Columns className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => onViewModeChange("preview")}
+                className={`p-1 rounded transition-colors ${
+                  viewMode === "preview" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
+                }`}
+                title="PDF Preview only"
+              >
+                <FileText className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center rounded-md border border-zinc-800 bg-zinc-900/90 p-0.5">
             <button
               onClick={() => handleZoomChange(zoom - 10)}
-              className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors touch-manipulation"
+              className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors touch-manipulation"
               title="Zoom out"
             >
               <ZoomOut className="h-3.5 w-3.5" />
             </button>
-            <span className="px-2 font-mono text-[11px] text-zinc-300 select-none">
+            <span className="px-1.5 font-mono text-[11px] text-zinc-300 select-none min-w-[34px] text-center">
               {zoom}%
             </span>
             <button
               onClick={() => handleZoomChange(zoom + 10)}
-              className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors touch-manipulation"
+              className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors touch-manipulation"
               title="Zoom in"
             >
               <ZoomIn className="h-3.5 w-3.5" />
@@ -315,54 +357,38 @@ export default function PdfViewer({
 
           <button
             onClick={handleFitWidth}
-            className={`flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-mono transition-colors touch-manipulation ${
+            className={`flex items-center justify-center rounded-md border p-1.5 transition-colors touch-manipulation ${
               isFitWidth
                 ? "border-emerald-500/40 bg-emerald-950/30 text-emerald-300"
                 : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white"
             }`}
-            title="Fit PDF to Available Width"
+            title="Fit to Width"
           >
-            <Scaling className="h-3 w-3" />
-            <span>Fit Width</span>
+            <Scaling className="h-3.5 w-3.5" />
           </button>
-
-          <button
-            onClick={() => handleZoomChange(100)}
-            className="hidden sm:inline-flex rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] font-mono text-zinc-400 hover:text-white transition-colors touch-manipulation"
-          >
-            100%
-          </button>
-
-          {/* Click to source hint */}
-          <div className="hidden lg:flex items-center gap-1 text-[11px] text-zinc-500 font-mono pl-2">
-            <MousePointerClick className="h-3 w-3 text-zinc-400" />
-            <span>Click text to jump to LaTeX</span>
-          </div>
-
-          {/* Quick Score Trigger in Preview Header if available */}
-          {onOpenScore && (
-            <button
-              onClick={onOpenScore}
-              className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-950/20 px-2 py-1 text-[11px] font-mono text-emerald-400 hover:bg-emerald-900/30 transition-colors"
-            >
-              <span className="font-semibold">Score:</span>
-              <span>{atsScore ? `${atsScore}%` : "Analyze"}</span>
-            </button>
-          )}
         </div>
 
-        {/* Right: Single Compact Download Dropdown (ViewPort Maxing) */}
-        <div className="relative" ref={downloadMenuRef}>
+        {/* Right: Recompile & Download (Pure Icons) */}
+        <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
-            disabled={!pdfUrl || isCompiling}
-            className="flex items-center gap-1.5 rounded-md bg-emerald-500/15 border border-emerald-500/40 px-2.5 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 transition-all disabled:opacity-40 shadow-sm touch-manipulation"
-            title="Download resume formats (.pdf, .docx, .tex)"
+            onClick={onRetry}
+            disabled={isCompiling}
+            className="flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/90 p-1.5 text-zinc-400 hover:border-emerald-500/40 hover:bg-zinc-800 hover:text-emerald-400 transition-all disabled:opacity-40 shadow-sm touch-manipulation"
+            title="Recompile Resume (⌘S)"
           >
-            <Download className="h-3.5 w-3.5 text-emerald-400" />
-            <span className="hidden xs:inline">Download</span>
-            <ChevronDown className="h-3 w-3 opacity-70" />
+            <RefreshCw className={`h-3.5 w-3.5 ${isCompiling ? "animate-spin text-emerald-400" : ""}`} />
           </button>
+
+          <div className="relative" ref={downloadMenuRef}>
+            <button
+              onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
+              disabled={!pdfUrl || isCompiling}
+              className="flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/40 px-2 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 transition-all disabled:opacity-40 shadow-sm touch-manipulation"
+              title="Download formats (.pdf, .docx, .tex)"
+            >
+              <Download className="h-3.5 w-3.5 text-emerald-400" />
+              <ChevronDown className="h-3 w-3 opacity-70" />
+            </button>
 
           {downloadMenuOpen && (
             <div className="absolute right-0 top-full mt-1.5 z-50 w-52 rounded-xl border border-zinc-800 bg-zinc-950/95 p-1.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95">
@@ -430,6 +456,7 @@ export default function PdfViewer({
           )}
         </div>
       </div>
+    </div>
 
       {/* PDF Viewport with Crisp Canvas & Click-to-Source Text Layer */}
       <div

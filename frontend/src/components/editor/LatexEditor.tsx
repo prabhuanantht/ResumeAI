@@ -9,14 +9,15 @@ import {
   Redo2, 
   AlertCircle,
   Play,
+  RefreshCw,
   TrendingUp,
-  Zap,
   Sparkles,
-  Loader2,
   Columns,
   Code2,
-  FileText
+  FileText,
+  AlignLeft
 } from "lucide-react";
+import VisualResumeEditor from "./VisualResumeEditor";
 
 // Dynamic import of Monaco to prevent SSR issues
 const Editor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
@@ -33,8 +34,6 @@ interface LatexEditorProps {
   onViewModeChange?: (mode: "split" | "editor" | "preview") => void;
   liveAtsScore?: number | null;
   onOpenScore?: () => void;
-  onAutoBoost?: () => void;
-  isBoosting?: boolean;
   onToggleAi?: () => void;
   isAiOpen?: boolean;
 }
@@ -51,16 +50,22 @@ export default function LatexEditor({
   onViewModeChange,
   liveAtsScore = null,
   onOpenScore,
-  onAutoBoost,
-  isBoosting = false,
   onToggleAi,
   isAiOpen = false,
 }: LatexEditorProps) {
   const [copied, setCopied] = useState(false);
+  const [editorMode, setEditorMode] = useState<"text" | "code">("text");
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const decorationsRef = useRef<string[]>([]);
   const isInternalChangeRef = useRef(false);
+
+  // Auto-switch to code mode if click-to-source navigation occurs
+  useEffect(() => {
+    if (targetLine && editorMode !== "code") {
+      setEditorMode("code");
+    }
+  }, [targetLine, editorMode]);
 
   // When external/AI code changes arrive, apply them as a single undoable transaction
   useEffect(() => {
@@ -141,45 +146,73 @@ export default function LatexEditor({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const lineCount = code.split("\n").length;
-
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl">
-      {/* Integrated Unified Header */}
-      <div className="flex flex-wrap min-h-10 items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-2.5 sm:px-3 py-1.5 gap-2 text-xs">
-        {/* Left: File + Compile Icon + Undo / Redo */}
+      {/* Single-Line Compact Toolbar: Icons Only (Except Copilot) */}
+      <div className="flex h-10 items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-3 text-xs shrink-0 select-none">
+        {/* Left: Mode Toggle (Text vs Code) + Compile Icon + Undo / Redo */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <div className="flex items-center gap-1.5 pr-1">
-            <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
-            <span className="font-mono text-zinc-300 font-medium text-xs">resume.tex</span>
+          {/* Editor Mode Switcher: Text (Visual) vs Code (LaTeX) */}
+          <div className="flex items-center rounded-md border border-zinc-800 bg-zinc-950 p-0.5">
+            <button
+              onClick={() => setEditorMode("text")}
+              className={`p-1 rounded transition-colors ${
+                editorMode === "text"
+                  ? "bg-emerald-500/20 text-emerald-300 shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+              title="Visual Text Mode (No LaTeX)"
+            >
+              <AlignLeft className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setEditorMode("code")}
+              className={`p-1 rounded transition-colors ${
+                editorMode === "code"
+                  ? "bg-zinc-800 text-white shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+              title="Raw LaTeX Code Mode"
+            >
+              <Code2 className="h-3.5 w-3.5" />
+            </button>
           </div>
 
-          {/* Recompile Icon Button directly in Editor */}
+          <div className="hidden xs:flex items-center gap-1.5 pr-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+            <span className="font-mono text-zinc-400 font-medium text-[11px]">
+              {editorMode === "text" ? "text" : "latex"}
+            </span>
+          </div>
+
+          {/* Compile Icon Button */}
           {onCompile && (
             <button
               onClick={onCompile}
               disabled={isCompiling}
-              className="flex items-center gap-1.5 rounded-md bg-emerald-500/15 border border-emerald-500/40 px-2.5 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 transition-all disabled:opacity-50 touch-manipulation shadow-sm"
-              title="Compile LaTeX to PDF (⌘S / Ctrl+S)"
+              className="flex items-center justify-center h-7 w-7 rounded-md bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/25 transition-all disabled:opacity-50 touch-manipulation"
+              title="Compile PDF (⌘S / Ctrl+S)"
             >
-              <Play className={`h-3 w-3 fill-emerald-400 text-emerald-400 ${isCompiling ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline font-mono text-[11px]">{isCompiling ? "Compiling..." : "Compile"}</span>
-              <kbd className="hidden md:inline-block rounded bg-zinc-800/80 px-1 py-0.2 text-[9px] font-mono text-zinc-400">⌘S</kbd>
+              {isCompiling ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play className="h-3.5 w-3.5 fill-emerald-400" />
+              )}
             </button>
           )}
 
-          {/* Undo / Redo Controls */}
+          {/* Undo / Redo Icon Buttons */}
           <div className="flex items-center rounded-md border border-zinc-800 bg-zinc-900/90 p-0.5">
             <button
               onClick={handleUndo}
-              className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors touch-manipulation"
+              className="p-1 rounded text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors touch-manipulation"
               title="Undo (⌘Z / Ctrl+Z)"
             >
               <Undo2 className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={handleRedo}
-              className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors touch-manipulation"
+              className="p-1 rounded text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors touch-manipulation"
               title="Redo (⌘⇧Z / Ctrl+Y)"
             >
               <Redo2 className="h-3.5 w-3.5" />
@@ -187,121 +220,112 @@ export default function LatexEditor({
           </div>
         </div>
 
-        {/* Right: View Mode + ATS Score + Auto-Boost + AI Copilot + Copy */}
+        {/* Right: View Modes (Icons) + ATS Score (Icon+Number) + Copilot (The Only Text Button) + Copy Icon */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* View Mode Switcher */}
+          {/* View Mode Switcher (Icons Only) */}
           {onViewModeChange && (
-            <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-950 p-0.5">
+            <div className="flex items-center rounded-md border border-zinc-800 bg-zinc-950 p-0.5">
               <button
                 onClick={() => onViewModeChange("editor")}
-                className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                  viewMode === "editor" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                className={`p-1 rounded transition-colors ${
+                  viewMode === "editor" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
                 }`}
-                title="Editor only"
+                title="Code Editor only"
               >
-                <Code2 className="h-3.5 w-3.5 sm:hidden" />
-                <span className="hidden sm:inline">Code</span>
+                <Code2 className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={() => onViewModeChange("split")}
-                className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                  viewMode === "split" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                className={`p-1 rounded transition-colors ${
+                  viewMode === "split" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
                 }`}
-                title="Split screen"
+                title="Split View"
               >
-                <Columns className="h-3.5 w-3.5 sm:hidden" />
-                <span className="hidden sm:inline">Split</span>
+                <Columns className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={() => onViewModeChange("preview")}
-                className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                  viewMode === "preview" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                className={`p-1 rounded transition-colors ${
+                  viewMode === "preview" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
                 }`}
                 title="PDF Preview only"
               >
-                <FileText className="h-3.5 w-3.5 sm:hidden" />
-                <span className="hidden sm:inline">PDF</span>
+                <FileText className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
 
-          {/* ATS Score Button */}
+          {/* ATS Score (Icon + Number Only) */}
           {onOpenScore && (
             <button
               onClick={onOpenScore}
-              className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-950/30 px-2 sm:px-2.5 py-1 text-xs font-mono font-bold text-emerald-400 hover:bg-emerald-900/40 transition-colors shadow-sm"
-              title="Open ATS Score Diagnostics & Benchmark"
+              className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-950/30 px-2 py-1 text-[11px] font-mono font-bold text-emerald-400 hover:bg-emerald-900/40 transition-colors shadow-sm"
+              title="ATS Match Score (Click for diagnostics)"
             >
-              <TrendingUp className="h-3.5 w-3.5" />
-              <span>ATS {liveAtsScore ? `${liveAtsScore}%` : "..."}</span>
+              <TrendingUp className="h-3 w-3 text-emerald-400" />
+              <span>{liveAtsScore ? `${liveAtsScore}%` : "39%"}</span>
             </button>
           )}
 
-          {/* 1-Click Auto Boost */}
-          {onAutoBoost && (
-            <button
-              onClick={onAutoBoost}
-              disabled={isBoosting}
-              className="flex items-center gap-1 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-400 px-2 sm:px-2.5 py-1 text-xs font-bold text-zinc-950 hover:brightness-110 shadow-sm transition-all disabled:opacity-50 touch-manipulation"
-              title="1-Click Auto-Boost using Google X-Y-Z formula (⌘B)"
-            >
-              {isBoosting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 fill-zinc-950" />}
-              <span className="hidden sm:inline">Auto-Boost</span>
-              <kbd className="hidden lg:inline text-[9px] bg-zinc-900/30 text-zinc-950 px-1 rounded font-mono">⌘B</kbd>
-            </button>
-          )}
-
-          {/* AI Copilot Toggle */}
+          {/* Copilot (The ONLY button with text) */}
           {onToggleAi && (
             <button
               onClick={onToggleAi}
-              className={`flex items-center gap-1 rounded-lg border px-2 sm:px-2.5 py-1 text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all ${
                 isAiOpen
-                  ? "border-indigo-500 bg-indigo-950/70 text-white"
-                  : "border-indigo-500/40 bg-indigo-950/20 text-indigo-300 hover:bg-indigo-900/40"
+                  ? "bg-indigo-500 text-white shadow-sm"
+                  : "bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/25"
               }`}
-              title="Toggle LaTeX AI Copilot"
+              title="Toggle LaTeX AI Copilot (Includes Auto-Boost)"
             >
               <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
-              <span className="hidden sm:inline">Copilot</span>
+              <span>Copilot</span>
             </button>
           )}
 
-          {/* Copy Button */}
+          {/* Copy Icon Button */}
           <button
             onClick={handleCopy}
             title="Copy LaTeX source code"
-            className="flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400 hover:text-zinc-200 transition-colors"
+            className="flex items-center justify-center h-7 w-7 rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200 transition-colors"
           >
-            {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
           </button>
         </div>
       </div>
 
-      {/* Monaco Container */}
+      {/* Editor Body: Visual Text Mode OR Raw Monaco LaTeX Mode */}
       <div className="relative flex-1 min-h-[450px]">
-        <Editor
-          height="100%"
-          language="latex"
-          theme="vs-dark"
-          value={code}
-          onChange={handleEditorChange}
-          onMount={handleEditorDidMount}
-          options={{
-            fontSize: 13,
-            fontFamily: "Geist Mono, JetBrains Mono, Menlo, monospace",
-            minimap: { enabled: false },
-            lineNumbers: "on",
-            wordWrap: "on",
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            tabSize: 2,
-            smoothScrolling: true,
-            cursorBlinking: "smooth",
-            renderLineHighlight: "all",
-            padding: { top: 12, bottom: 12 },
-          }}
-        />
+        {editorMode === "text" ? (
+          <VisualResumeEditor
+            latexCode={code}
+            onChange={onChange}
+            onCompile={onCompile}
+          />
+        ) : (
+          <Editor
+            height="100%"
+            language="latex"
+            theme="vs-dark"
+            value={code}
+            onChange={handleEditorChange}
+            onMount={handleEditorDidMount}
+            options={{
+              fontSize: 13,
+              fontFamily: "Geist Mono, JetBrains Mono, Menlo, monospace",
+              minimap: { enabled: false },
+              lineNumbers: "on",
+              wordWrap: "on",
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              tabSize: 2,
+              smoothScrolling: true,
+              cursorBlinking: "smooth",
+              renderLineHighlight: "all",
+              padding: { top: 12, bottom: 12 },
+            }}
+          />
+        )}
 
         {/* Error Notification Drawer if syntax error exists */}
         {errors.length > 0 && (

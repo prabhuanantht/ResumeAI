@@ -148,7 +148,9 @@ export default function AmbientCanvas() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("resize", handleResize);
       if (mount && renderer.domElement) {
-        mount.removeChild(renderer.domElement);
+        if (renderer.domElement.parentNode === mount) {
+          mount.removeChild(renderer.domElement);
+        }
       }
       geometry.dispose();
       material.dispose();

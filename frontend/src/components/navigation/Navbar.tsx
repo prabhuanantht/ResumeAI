@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
-  FileText, 
   Sparkles, 
   Settings as SettingsIcon, 
   Code2, 
@@ -30,91 +29,84 @@ export default function Navbar() {
     setHasApiKey(Boolean(key));
   };
 
-  const navLinks = [
-    { href: "/studio", label: "Studio", icon: Code2 },
-    { href: "/tailor", label: "Job Tailor & ATS", icon: Sparkles },
-  ];
-
   return (
     <>
-      <header className="sticky top-0 z-40 w-full border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md">
-        <div className="mx-auto flex h-13 max-w-7xl items-center justify-between px-3 sm:px-6">
+      <header className="sticky top-0 z-40 w-full border-b border-white/[0.06] bg-zinc-950/70 backdrop-blur-2xl transition-all">
+        <div className="mx-auto flex h-11 max-w-7xl items-center justify-between px-3 sm:px-6">
           {/* Brand */}
-          <div className="flex items-center gap-4 sm:gap-7">
-            <Link href="/" className="group flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 via-teal-500 to-indigo-500 p-0.5 shadow-md shadow-emerald-500/20 group-hover:scale-105 transition-transform">
-                <div className="flex h-full w-full items-center justify-center rounded-[6px] bg-zinc-950">
-                  <span className="font-mono text-xs font-black text-emerald-400 tracking-tighter">
-                    \T/
-                  </span>
-                </div>
+          <div className="flex items-center gap-4 sm:gap-6">
+            <Link href="/" className="group flex items-center gap-2.5 select-none">
+              <div className="relative flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.15)] group-hover:border-emerald-500/50 transition-all">
+                <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold tracking-tight text-white font-mono text-sm sm:text-base">
-                  TeX<span className="text-emerald-400">Craft</span>
-                </span>
-                <span className="hidden sm:inline-block rounded-full bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-[10px] font-mono text-zinc-400">
-                  Overleaf Grade
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold tracking-tight text-zinc-100 font-sans">
+                  Resume<span className="text-emerald-400">AI</span>
                 </span>
               </div>
             </Link>
 
-            {/* Nav Links */}
-            <nav className="hidden sm:flex items-center gap-1">
-              {navLinks.map((link) => {
-                const Icon = link.icon;
-                const isActive = pathname === link.href;
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                      isActive
-                        ? "bg-zinc-800 text-white shadow-sm border border-zinc-700/60"
-                        : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5 text-zinc-400" />
-                    <span>{link.label}</span>
-                  </Link>
-                );
-              })}
+            {/* Linear-Style Segmented Navigation Tabs */}
+            <nav className="hidden sm:flex items-center rounded-full bg-zinc-900/60 p-0.5 border border-white/[0.06]">
+              <Link
+                href="/studio"
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  pathname === "/studio"
+                    ? "bg-zinc-800 text-white shadow-sm"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <Code2 className="h-3 w-3" />
+                <span>Studio</span>
+              </Link>
+
+              <Link
+                href="/tailor"
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  pathname === "/tailor"
+                    ? "bg-zinc-800 text-white shadow-sm"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <Sparkles className="h-3 w-3" />
+                <span>Tailor & ATS</span>
+              </Link>
             </nav>
           </div>
 
-          {/* Right Action Icons: Key & Settings Icon */}
-          <div className="flex items-center gap-2">
-            {/* API Key Modal Button */}
+          {/* Right Action Icons: Key & Settings */}
+          <div className="flex items-center gap-1.5">
+            {/* Key Icon Button */}
             <button
               onClick={() => setApiKeyModalOpen(true)}
-              className="relative flex items-center justify-center h-8 w-8 rounded-lg border border-zinc-800 bg-zinc-900/90 text-zinc-400 hover:border-zinc-700 hover:text-white transition-all shadow-sm"
+              className="relative flex items-center justify-center h-7 w-7 rounded-lg text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200 transition-colors"
               title={hasApiKey ? "Gemini API Key Connected (Click to manage)" : "Connect Free Gemini API Key"}
             >
-              <Key className="h-4 w-4" />
+              <Key className="h-3.5 w-3.5" />
               {hasApiKey ? (
-                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-zinc-950" />
+                <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-emerald-400 ring-2 ring-zinc-950" />
               ) : (
-                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-zinc-950" />
+                <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-zinc-950 animate-pulse" />
               )}
             </button>
 
-            {/* System Prompt / Settings Icon */}
+            {/* Settings Icon Button */}
             <Link
               href="/settings"
-              className={`flex items-center justify-center h-8 w-8 rounded-lg border transition-all shadow-sm ${
+              className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${
                 pathname === "/settings"
-                  ? "border-emerald-500/40 bg-zinc-800 text-white"
-                  : "border-zinc-800 bg-zinc-900/90 text-zinc-400 hover:border-zinc-700 hover:text-white"
+                  ? "bg-zinc-800 text-white"
+                  : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200"
               }`}
               title="System Prompt, AI Governance & Rules"
             >
-              <SettingsIcon className="h-4 w-4" />
+              <SettingsIcon className="h-3.5 w-3.5" />
             </Link>
 
             {/* Mobile Menu Toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="sm:hidden rounded-lg border border-zinc-800 bg-zinc-900 p-1.5 text-zinc-400 hover:text-white"
+              className="sm:hidden rounded-lg p-1 text-zinc-400 hover:bg-zinc-900 hover:text-white"
             >
               {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </button>
@@ -123,31 +115,37 @@ export default function Navbar() {
 
         {/* Mobile Menu Dropdown */}
         {mobileMenuOpen && (
-          <div className="sm:hidden border-t border-zinc-800 bg-zinc-950 px-4 py-3 space-y-2">
-            {navLinks.map((link) => {
-              const Icon = link.icon;
-              const isActive = pathname === link.href;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium ${
-                    isActive
-                      ? "bg-zinc-800 text-white"
-                      : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{link.label}</span>
-                </Link>
-              );
-            })}
+          <div className="sm:hidden border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl px-4 py-3 space-y-2 animate-in fade-in">
+            <Link
+              href="/studio"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
+                pathname === "/studio"
+                  ? "bg-zinc-800 text-white"
+                  : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+              }`}
+            >
+              <Code2 className="h-4 w-4" />
+              <span>Studio</span>
+            </Link>
+
+            <Link
+              href="/tailor"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
+                pathname === "/tailor"
+                  ? "bg-zinc-800 text-white"
+                  : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+              }`}
+            >
+              <Sparkles className="h-4 w-4" />
+              <span>Job Tailor & ATS</span>
+            </Link>
 
             <Link
               href="/settings"
               onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-900 hover:text-white"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-900 hover:text-white"
             >
               <SettingsIcon className="h-4 w-4" />
               <span>System Prompt & Settings</span>
