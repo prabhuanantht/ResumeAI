@@ -291,3 +291,49 @@ export async function testApiKey(
   }
   return res.json();
 }
+
+export interface UploadResumeResult {
+  latex_code: string;
+  candidate_name: string;
+  filename: string;
+  ats_score: number;
+  extracted_text_preview: string;
+}
+
+export interface CuratedTemplate {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  latex_code: string;
+  badge?: string;
+}
+
+export async function uploadAndConvertResume(file: File): Promise<UploadResumeResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const key = getStoredApiKey();
+  const headers: Record<string, string> = {};
+  if (key) {
+    headers["X-Gemini-Key"] = key;
+  }
+
+  const res = await fetch(`${API_BASE}/api/resumes/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Upload failed." }));
+    throw new Error(err.detail || "Failed to convert resume.");
+  }
+  return res.json();
+}
+
+export async function getCuratedTemplates(): Promise<CuratedTemplate[]> {
+  const res = await fetch(`${API_BASE}/api/resumes/templates`);
+  if (!res.ok) throw new Error("Failed to load templates");
+  return res.json();
+}

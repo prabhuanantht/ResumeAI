@@ -7,6 +7,7 @@ import PdfViewer from "@/components/editor/PdfViewer";
 import AiAssistant from "@/components/editor/AiAssistant";
 import ResumeScorerDrawer from "@/components/editor/ResumeScorerDrawer";
 import ApiKeyModal from "@/components/settings/ApiKeyModal";
+import ResumeImportModal from "@/components/upload/ResumeImportModal";
 import { 
   getProfile, 
   compilePdf, 
@@ -79,6 +80,7 @@ export default function StudioPage() {
   const [lastSavedTime, setLastSavedTime] = useState<string>("");
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   const [apiKeyModalOpen, setApiKeyModalOpen] = useState<boolean>(false);
+  const [importModalOpen, setImportModalOpen] = useState<boolean>(false);
   const [showKeyBanner, setShowKeyBanner] = useState<boolean>(true);
   const [targetJd, setTargetJd] = useState<string>("");
 
@@ -364,6 +366,7 @@ export default function StudioPage() {
               onOpenScore={() => setIsScoreOpen(true)}
               onToggleAi={() => setIsAiOpen(!isAiOpen)}
               isAiOpen={isAiOpen}
+              onOpenImport={() => setImportModalOpen(true)}
             />
           </div>
         )}
@@ -469,6 +472,16 @@ export default function StudioPage() {
         isOpen={apiKeyModalOpen}
         onClose={() => setApiKeyModalOpen(false)}
         onKeySaved={(k) => setHasApiKey(Boolean(k))}
+      />
+
+      {/* Resume Import & Template Selection Modal */}
+      <ResumeImportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onImportSuccess={(newCode) => {
+          setLatexCode(newCode);
+          triggerCompile(newCode);
+        }}
       />
     </div>
   );

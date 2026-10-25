@@ -15,7 +15,8 @@ import {
   Columns,
   Code2,
   FileText,
-  AlignLeft
+  AlignLeft,
+  Upload
 } from "lucide-react";
 import VisualResumeEditor from "./VisualResumeEditor";
 
@@ -36,6 +37,7 @@ interface LatexEditorProps {
   onOpenScore?: () => void;
   onToggleAi?: () => void;
   isAiOpen?: boolean;
+  onOpenImport?: () => void;
 }
 
 export default function LatexEditor({
@@ -52,6 +54,7 @@ export default function LatexEditor({
   onOpenScore,
   onToggleAi,
   isAiOpen = false,
+  onOpenImport,
 }: LatexEditorProps) {
   const [copied, setCopied] = useState(false);
   const [editorMode, setEditorMode] = useState<"text" | "code">("text");
@@ -184,6 +187,17 @@ export default function LatexEditor({
               {editorMode === "text" ? "text" : "latex"}
             </span>
           </div>
+
+          {/* Upload / Import Resume Icon Button */}
+          {onOpenImport && (
+            <button
+              onClick={onOpenImport}
+              className="flex items-center justify-center h-7 w-7 rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-emerald-500/40 hover:bg-zinc-800 hover:text-emerald-400 transition-all touch-manipulation"
+              title="Upload Resume (PDF, DOCX) or Load ATS Templates"
+            >
+              <Upload className="h-3.5 w-3.5" />
+            </button>
+          )}
 
           {/* Compile Icon Button */}
           {onCompile && (

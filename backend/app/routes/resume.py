@@ -1,14 +1,17 @@
 import json
 import uuid
+import io
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, UploadFile, File
 from pydantic import BaseModel
+from pypdf import PdfReader
+import docx
 from backend.app.config import settings
 from backend.app.database import get_db_connection
 from backend.app.models import Profile, TailorResponse, AtsBreakdown
-from backend.app.services.templates import DEFAULT_PRIMARY_RESUME
+from backend.app.services.templates import DEFAULT_PRIMARY_RESUME, CURATED_TEMPLATES
 from backend.app.services.ats_scorer import score_resume_against_job
-from backend.app.services.gemini import auto_boost_latex
+from backend.app.services.gemini import auto_boost_latex, convert_resume_to_latex
 
 router = APIRouter(prefix="/api/resumes", tags=["Resumes"])
 
@@ -28,6 +31,88 @@ class AutoBoostResponse(BaseModel):
     original_score: int
     boosted_score: int
     ats_breakdown: AtsBreakdown
+
+class UploadResumeResponse(BaseModel):
+    latex_code: str
+    candidate_name: str
+    filename: str
+    ats_score: int
+    extracted_text_preview: str
+
+@router.get("/templates")
+async def get_templates():
+    """Returns curated ATS-optimized LaTeX resume templates."""
+    return CURATED_TEMPLATES
+
+@router.post("/upload", response_model=UploadResumeResponse)
+async def upload_and_convert_resume(
+    file: UploadFile = File(...),
+    x_gemini_key: Optional[str] = Header(None)
+):
+    """
+    Accepts an uploaded PDF, DOCX, or TXT resume, extracts its contents,
+    converts it into Overleaf-grade ATS LaTeX via AI, and calculates its initial ATS score.
+    """
+    try:
+        content = await file.read()
+        filename = file.filename or "resume.pdf"
+        lower_name = filename.lower()
+        extracted_text = ""
+
+        if lower_name.endswith(".pdf"):
+            reader = PdfReader(io.BytesIO(content))
+            for page in reader.pages:
+                t = page.extract_text()
+                if t:
+                    extracted_text += t + "\n"
+        elif lower_name.endswith(".docx"):
+            doc = docx.Document(io.BytesIO(content))
+            extracted_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+        else:
+            extracted_text = content.decode("utf-8", errors="ignore")
+
+        if not extracted_text.strip():
+            raise HTTPException(status_code=400, detail="Could not extract readable text from the uploaded document.")
+
+        # Retrieve active settings & API key
+        async with get_db_connection() as db:
+            gemini_model = "gemini-3.8-flash"
+            gemini_key = ""
+            forbidden_words = ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
+            async with db.execute("SELECT forbidden_words, gemini_model, gemini_api_key FROM settings WHERE id = 'default_settings'") as cursor:
+                s_row = await cursor.fetchone()
+                if s_row:
+                    forbidden_words = json.loads(s_row[0]) if s_row[0] else forbidden_words
+                    gemini_model = s_row[1] or gemini_model
+                    gemini_key = s_row[2] or ""
+
+        active_key = x_gemini_key or gemini_key or settings.GEMINI_API_KEY
+
+        # Convert to LaTeX using AI (or algorithmic fallback if no key)
+        latex_code, candidate_name = await convert_resume_to_latex(
+            resume_text=extracted_text,
+            gemini_api_key=active_key,
+            model_name=gemini_model
+        )
+
+        # Baseline score calculation
+        breakdown = score_resume_against_job(
+            resume_latex=latex_code,
+            job_description="General Software Engineering, Full Stack, Cloud Architecture",
+            forbidden_words=forbidden_words
+        )
+
+        return UploadResumeResponse(
+            latex_code=latex_code,
+            candidate_name=candidate_name,
+            filename=filename,
+            ats_score=breakdown.overall_score,
+            extracted_text_preview=extracted_text[:300].strip()
+        )
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Failed to process resume: {str(e)}")
 
 @router.post("/score", response_model=AtsBreakdown)
 async def score_resume(req: ScoreRequest):

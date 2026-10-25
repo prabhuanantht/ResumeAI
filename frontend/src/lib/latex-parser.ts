@@ -1,41 +1,36 @@
 /**
- * LaTeX Parser & Serializer for ResumeAI Visual Text Mode.
- * Seamlessly abstracts LaTeX syntax away from the user while generating
- * production-ready, ATS-optimized, compilable LaTeX in the background.
+ * Dynamic Section LaTeX Parser & Serializer for ResumeAI.
+ * Supports arbitrary sections: Experience, Education, Projects, Skills, Certifications,
+ * Summary, Publications, Leadership, Awards, and custom blocks.
  */
 
-export interface EducationItem {
+export type SectionType = "subheadings" | "key_value" | "bullet_list" | "paragraph" | "raw";
+
+export interface SubheadingItem {
   id: string;
-  institution: string;
-  location: string;
-  degree: string;
-  dates: string;
+  primaryTitle: string;    // e.g. Role, Project Name, Institution, Award
+  secondaryTitle?: string;  // e.g. Company, Tech Stack, Degree
+  location?: string;        // e.g. City, State
+  dates?: string;           // e.g. June 2023 -- Present
+  link?: string;            // e.g. https://github.com/...
+  bullets: string[];        // Achievements & metric bullet points
 }
 
-export interface ExperienceItem {
+export interface KeyValueCategory {
   id: string;
-  role: string;
-  company: string;
-  location: string;
-  dates: string;
-  bullets: string[];
+  label: string;  // e.g. Languages, Frameworks, Cloud & DevOps, Developer Tools
+  value: string;  // e.g. Python, TypeScript, Docker, Kubernetes
 }
 
-export interface ProjectItem {
+export interface DynamicSection {
   id: string;
-  name: string;
-  tech: string;
-  dates: string;
-  description: string;
-  link: string;
-  bullets: string[];
-}
-
-export interface SkillsCategory {
-  languages: string;
-  frameworks: string;
-  cloud: string;
-  tools: string;
+  title: string;          // Section title (e.g. Experience, Education, Summary)
+  type: SectionType;
+  items?: SubheadingItem[];        // For subheadings (Experience, Projects, Education, Leadership)
+  categories?: KeyValueCategory[]; // For key-value categorized lists (Skills, Coursework)
+  bullets?: string[];              // For simple bulleted lists (Certifications, Honors)
+  content?: string;                // For multi-line text (Summary, Objective, Bio)
+  rawLatex?: string;               // For unparsed custom LaTeX
 }
 
 export interface ResumeModel {
@@ -44,10 +39,7 @@ export interface ResumeModel {
   email: string;
   linkedin: string;
   github: string;
-  education: EducationItem[];
-  experience: ExperienceItem[];
-  projects: ProjectItem[];
-  skills: SkillsCategory;
+  sections: DynamicSection[];
   preamble: string;
 }
 
@@ -126,7 +118,7 @@ export function escapeLatexText(text: string): string {
 /**
  * Default fallback preamble if none exists.
  */
-const DEFAULT_PREAMBLE = `\\documentclass[letterpaper,10pt]{article}
+export const DEFAULT_PREAMBLE = `\\documentclass[letterpaper,10pt]{article}
 
 \\usepackage{latexsym}
 \\usepackage[empty]{fullpage}
@@ -185,36 +177,28 @@ const DEFAULT_PREAMBLE = `\\documentclass[letterpaper,10pt]{article}
 `;
 
 /**
- * Parses raw LaTeX code into a clean, human-friendly ResumeModel.
+ * Parses raw LaTeX code into a comprehensive ResumeModel with dynamic arbitrary sections.
  */
 export function parseLatexToModel(latex: string): ResumeModel {
   const model: ResumeModel = {
-    name: "Your Name",
+    name: "Candidate",
     phone: "",
     email: "",
     linkedin: "",
     github: "",
-    education: [],
-    experience: [],
-    projects: [],
-    skills: {
-      languages: "",
-      frameworks: "",
-      cloud: "",
-      tools: "",
-    },
+    sections: [],
     preamble: DEFAULT_PREAMBLE,
   };
 
   if (!latex || !latex.trim()) return model;
 
-  // Extract preamble (everything before \begin{document})
+  // 1. Extract preamble (everything before \begin{document})
   const docStartIdx = latex.indexOf("\\begin{document}");
   if (docStartIdx !== -1) {
     model.preamble = latex.substring(0, docStartIdx).trim();
   }
 
-  // Extract Name from heading
+  // 2. Extract Name from heading
   const nameMatch = latex.match(/\\textbf\{\\Huge\s+(?:\\scshape\s+)?([^}]+)\}/);
   if (nameMatch) {
     model.name = cleanLatexText(nameMatch[1]);
@@ -223,119 +207,154 @@ export function parseLatexToModel(latex: string): ResumeModel {
     if (fallbackName) model.name = cleanLatexText(fallbackName[1]);
   }
 
-  // Extract Phone
+  // 3. Extract Contact Details
   const phoneMatch = latex.match(/(\+?\d[\d\s\(\)\-\.]{7,}\d)/);
   if (phoneMatch) model.phone = phoneMatch[1].trim();
 
-  // Extract Email
   const emailMatch = latex.match(/mailto:([^}]+)/) || latex.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
   if (emailMatch) model.email = emailMatch[1].trim();
 
-  // Extract LinkedIn
   const linkedinMatch = latex.match(/linkedin\.com\/in\/([^}\s\\$|]+)/);
   if (linkedinMatch) model.linkedin = cleanLatexText(linkedinMatch[1]);
 
-  // Extract GitHub
   const githubMatch = latex.match(/github\.com\/([^}\s\\$|]+)/);
   if (githubMatch) model.github = cleanLatexText(githubMatch[1]);
 
-  // Parse Education
-  const eduStart = latex.indexOf("\\section{Education}");
-  if (eduStart !== -1) {
-    const nextSec = latex.indexOf("\\section{", eduStart + 15);
-    const eduText = latex.substring(eduStart, nextSec !== -1 ? nextSec : undefined);
-    const subheadings = eduText.split(/\\resumeSubheading/);
-    for (let i = 1; i < subheadings.length; i++) {
-      const { args } = extractBracedArgs(subheadings[i], 0, 4);
-      if (args.length >= 2) {
-        model.education.push({
-          id: `edu-${i}-${Date.now()}`,
-          institution: cleanLatexText(args[0] || ""),
+  // 4. Find all sections dynamically in document body
+  const docEndIdx = latex.indexOf("\\end{document}");
+  const bodyText = latex.substring(docStartIdx !== -1 ? docStartIdx : 0, docEndIdx !== -1 ? docEndIdx : undefined);
+
+  const sectionRegex = /\\section\{([^}]+)\}/g;
+  let match: RegExpExecArray | null;
+  const sectionHeaders: Array<{ title: string; index: number; contentStart: number }> = [];
+
+  while ((match = sectionRegex.exec(bodyText)) !== null) {
+    sectionHeaders.push({
+      title: match[1],
+      index: match.index,
+      contentStart: match.index + match[0].length,
+    });
+  }
+
+  for (let i = 0; i < sectionHeaders.length; i++) {
+    const current = sectionHeaders[i];
+    const next = sectionHeaders[i + 1];
+    const rawContent = bodyText.substring(current.contentStart, next ? next.index : undefined).trim();
+    const cleanTitle = cleanLatexText(current.title);
+
+    // Detect section type and parse appropriately
+    if (rawContent.includes("\\resumeSubheading")) {
+      // Subheading list (e.g. Experience, Projects, Education, Leadership)
+      const subheadings = rawContent.split(/\\resumeSubheading/);
+      const items: SubheadingItem[] = [];
+
+      for (let s = 1; s < subheadings.length; s++) {
+        const part = subheadings[s];
+        const { args, nextIndex } = extractBracedArgs(part, 0, 4);
+        const bullets: string[] = [];
+        const itemParts = part.substring(nextIndex).split(/\\resumeItem/);
+
+        for (let b = 1; b < itemParts.length; b++) {
+          const bRes = extractBracedArgs(itemParts[b], 0, 1);
+          if (bRes.args.length > 0) {
+            bullets.push(cleanLatexText(bRes.args[0]));
+          }
+        }
+
+        const rawPrimary = cleanLatexText(args[0] || "");
+        const rawSec = cleanLatexText(args[2] || "");
+        let primary = rawPrimary;
+        let secondary = rawSec;
+        let link = cleanLatexText(args[3] || "");
+
+        // If projects have Title | Tech format
+        if (cleanTitle.toLowerCase().includes("project") && rawPrimary.includes("|")) {
+          const parts = rawPrimary.split("|").map((p) => p.trim());
+          primary = parts[0];
+          secondary = parts[1];
+        }
+
+        items.push({
+          id: `item-${i}-${s}-${Date.now()}`,
+          primaryTitle: primary,
+          secondaryTitle: secondary,
           location: cleanLatexText(args[1] || ""),
-          degree: cleanLatexText(args[2] || ""),
-          dates: cleanLatexText(args[3] || ""),
+          dates: cleanLatexText(args[3] || args[1] || ""),
+          link: link.startsWith("http") ? link : undefined,
+          bullets: bullets.length > 0 ? bullets : [""],
         });
       }
-    }
-  }
 
-  // Parse Experience
-  const expStart = latex.indexOf("\\section{Experience}");
-  if (expStart !== -1) {
-    const nextSec = latex.indexOf("\\section{", expStart + 16);
-    const expText = latex.substring(expStart, nextSec !== -1 ? nextSec : undefined);
-    const subheadings = expText.split(/\\resumeSubheading/);
-    for (let i = 1; i < subheadings.length; i++) {
-      const part = subheadings[i];
-      const { args, nextIndex } = extractBracedArgs(part, 0, 4);
-      const bullets: string[] = [];
-      const itemParts = part.substring(nextIndex).split(/\\resumeItem/);
-      for (let b = 1; b < itemParts.length; b++) {
-        const bRes = extractBracedArgs(itemParts[b], 0, 1);
-        if (bRes.args.length > 0) {
-          bullets.push(cleanLatexText(bRes.args[0]));
+      model.sections.push({
+        id: `sec-${i}-${cleanTitle.toLowerCase()}`,
+        title: cleanTitle,
+        type: "subheadings",
+        items,
+      });
+    } else if (/\\textbf\{[^}]+\}\s*\{\s*:[^}]+\}/.test(rawContent) || rawContent.includes("\\textbf{")) {
+      // Key-value categories (e.g. Technical Skills, Interests)
+      const categories: KeyValueCategory[] = [];
+      const regex = /\\textbf\{([^}]+)\}\{\s*:\s*([^\\}]+)\}/g;
+      let m: RegExpExecArray | null;
+
+      while ((m = regex.exec(rawContent)) !== null) {
+        categories.push({
+          id: `cat-${categories.length}-${Date.now()}`,
+          label: cleanLatexText(m[1]),
+          value: cleanLatexText(m[2]),
+        });
+      }
+
+      // Fallback for simple key-values
+      if (categories.length === 0) {
+        const lines = rawContent.split("\\\\");
+        for (const line of lines) {
+          const cleaned = cleanLatexText(line);
+          if (cleaned.includes(":")) {
+            const [k, ...v] = cleaned.split(":");
+            categories.push({
+              id: `cat-${categories.length}-${Date.now()}`,
+              label: k.trim(),
+              value: v.join(":").trim(),
+            });
+          }
         }
       }
-      model.experience.push({
-        id: `exp-${i}-${Date.now()}`,
-        role: cleanLatexText(args[0] || ""),
-        location: cleanLatexText(args[1] || ""),
-        company: cleanLatexText(args[2] || ""),
-        dates: cleanLatexText(args[3] || ""),
-        bullets: bullets.length > 0 ? bullets : [""],
-      });
-    }
-  }
 
-  // Parse Projects
-  const projStart = latex.indexOf("\\section{Projects}");
-  if (projStart !== -1) {
-    const nextSec = latex.indexOf("\\section{", projStart + 14);
-    const projText = latex.substring(projStart, nextSec !== -1 ? nextSec : undefined);
-    const subheadings = projText.split(/\\resumeSubheading/);
-    for (let i = 1; i < subheadings.length; i++) {
-      const part = subheadings[i];
-      const { args, nextIndex } = extractBracedArgs(part, 0, 4);
-      const rawTitle = cleanLatexText(args[0] || "");
-      const titleParts = rawTitle.split("|").map((t) => t.trim());
+      model.sections.push({
+        id: `sec-${i}-${cleanTitle.toLowerCase()}`,
+        title: cleanTitle,
+        type: "key_value",
+        categories,
+      });
+    } else if (rawContent.includes("\\resumeItem") || rawContent.includes("\\item")) {
+      // Simple bulleted list (e.g. Certifications, Awards, Honors)
       const bullets: string[] = [];
-      const itemParts = part.substring(nextIndex).split(/\\resumeItem/);
+      const itemParts = rawContent.split(/\\(?:resumeItem|item)/);
+
       for (let b = 1; b < itemParts.length; b++) {
         const bRes = extractBracedArgs(itemParts[b], 0, 1);
-        if (bRes.args.length > 0) {
-          bullets.push(cleanLatexText(bRes.args[0]));
-        }
+        const bulletText = bRes.args.length > 0 ? bRes.args[0] : itemParts[b];
+        const cleaned = cleanLatexText(bulletText);
+        if (cleaned) bullets.push(cleaned);
       }
-      model.projects.push({
-        id: `proj-${i}-${Date.now()}`,
-        name: titleParts[0] || rawTitle,
-        tech: titleParts[1] || "",
-        dates: cleanLatexText(args[1] || ""),
-        description: cleanLatexText(args[2] || ""),
-        link: cleanLatexText(args[3] || ""),
+
+      model.sections.push({
+        id: `sec-${i}-${cleanTitle.toLowerCase()}`,
+        title: cleanTitle,
+        type: "bullet_list",
         bullets: bullets.length > 0 ? bullets : [""],
       });
-    }
-  }
-
-  // Parse Technical Skills
-  const skillsStart = latex.indexOf("\\section{Technical Skills}");
-  if (skillsStart !== -1) {
-    const skillsText = latex.substring(skillsStart);
-    const regex = /\\textbf\{([^}]+)\}\{\s*:\s*([^\\}]+)\}/g;
-    let m;
-    while ((m = regex.exec(skillsText)) !== null) {
-      const cat = cleanLatexText(m[1]).toLowerCase();
-      const val = cleanLatexText(m[2]);
-      if (cat.includes("lang")) {
-        model.skills.languages = val;
-      } else if (cat.includes("frame") || cat.includes("librar")) {
-        model.skills.frameworks = val;
-      } else if (cat.includes("cloud") || cat.includes("devops")) {
-        model.skills.cloud = val;
-      } else if (cat.includes("tool") || cat.includes("developer")) {
-        model.skills.tools = val;
-      }
+    } else {
+      // Paragraph / summary or custom block
+      const cleaned = cleanLatexText(rawContent);
+      model.sections.push({
+        id: `sec-${i}-${cleanTitle.toLowerCase()}`,
+        title: cleanTitle,
+        type: cleaned.length > 0 ? "paragraph" : "raw",
+        content: cleaned,
+        rawLatex: rawContent,
+      });
     }
   }
 
@@ -343,12 +362,12 @@ export function parseLatexToModel(latex: string): ResumeModel {
 }
 
 /**
- * Serializes a ResumeModel back into beautiful, clean, compilable LaTeX.
+ * Serializes a dynamic ResumeModel back into beautiful, clean, compilable LaTeX.
  */
 export function serializeModelToLatex(model: ResumeModel): string {
   const preamble = model.preamble || DEFAULT_PREAMBLE;
 
-  // Contact line elements
+  // 1. Contact line elements
   const contactParts: string[] = [];
   if (model.phone) contactParts.push(escapeLatexText(model.phone));
   if (model.email) {
@@ -365,103 +384,86 @@ export function serializeModelToLatex(model: ResumeModel): string {
 
   const contactLine = contactParts.join(" $|$ \n    ");
 
-  // Education Section
-  let eduLatex = "";
-  if (model.education.length > 0) {
-    eduLatex = `%-----------EDUCATION-----------
-\\section{Education}
+  // 2. Dynamic Section Serialization
+  const sectionBlocks: string[] = [];
+
+  for (const sec of model.sections) {
+    const escapedTitle = escapeLatexText(sec.title);
+
+    if (sec.type === "subheadings" && sec.items && sec.items.length > 0) {
+      const isProject = sec.title.toLowerCase().includes("project");
+      const isEdu = sec.title.toLowerCase().includes("edu");
+
+      const renderedItems = sec.items
+        .map((item) => {
+          const bullets = item.bullets
+            .filter((b) => b.trim().length > 0)
+            .map((b) => `        \\resumeItem{${escapeLatexText(b)}}`)
+            .join("\n");
+
+          const bulletBlock = bullets ? `\n      \\resumeItemListStart\n${bullets}\n      \\resumeItemListEnd` : "";
+
+          if (isProject) {
+            const header = item.secondaryTitle
+              ? `\\textbf{${escapeLatexText(item.primaryTitle)}} $|$ \\emph{${escapeLatexText(item.secondaryTitle)}}`
+              : `\\textbf{${escapeLatexText(item.primaryTitle)}}`;
+
+            return `    \\resumeSubheading
+      {${header}}{${escapeLatexText(item.dates || "")}}
+      {${escapeLatexText(item.secondaryTitle || "")}}{${escapeLatexText(item.link || "")}}${bulletBlock}`;
+          }
+
+          if (isEdu) {
+            return `    \\resumeSubheading
+      {${escapeLatexText(item.primaryTitle)}}{${escapeLatexText(item.location || "")}}
+      {${escapeLatexText(item.secondaryTitle || "")}}{${escapeLatexText(item.dates || "")}}${bulletBlock}`;
+          }
+
+          // Default Experience / Work item
+          return `    \\resumeSubheading
+      {${escapeLatexText(item.primaryTitle)}}{${escapeLatexText(item.location || "")}}
+      {${escapeLatexText(item.secondaryTitle || "")}}{${escapeLatexText(item.dates || "")}}${bulletBlock}`;
+        })
+        .join("\n\n");
+
+      sectionBlocks.push(`%-----------${escapedTitle.toUpperCase()}-----------
+\\section{${escapedTitle}}
   \\resumeSubHeadingListStart
-${model.education
-  .map(
-    (e) => `    \\resumeSubheading
-      {${escapeLatexText(e.institution)}}{${escapeLatexText(e.location)}}
-      {${escapeLatexText(e.degree)}}{${escapeLatexText(e.dates)}}`
-  )
-  .join("\n")}
-  \\resumeSubHeadingListEnd\n`;
-  }
+${renderedItems}
+  \\resumeSubHeadingListEnd`);
+    } else if (sec.type === "key_value" && sec.categories && sec.categories.length > 0) {
+      const renderedCategories = sec.categories
+        .filter((c) => c.label.trim() || c.value.trim())
+        .map((c) => `     \\textbf{${escapeLatexText(c.label)}}{: ${escapeLatexText(c.value)}} \\\\`)
+        .join("\n");
 
-  // Experience Section
-  let expLatex = "";
-  if (model.experience.length > 0) {
-    expLatex = `%-----------EXPERIENCE-----------
-\\section{Experience}
-  \\resumeSubHeadingListStart
-${model.experience
-  .map((e) => {
-    const bulletItems = e.bullets
-      .filter((b) => b.trim().length > 0)
-      .map((b) => `        \\resumeItem{${escapeLatexText(b)}}`)
-      .join("\n");
-
-    return `    \\resumeSubheading
-      {${escapeLatexText(e.role)}}{${escapeLatexText(e.location)}}
-      {${escapeLatexText(e.company)}}{${escapeLatexText(e.dates)}}
-      \\resumeItemListStart
-${bulletItems}
-      \\resumeItemListEnd`;
-  })
-  .join("\n\n")}
-  \\resumeSubHeadingListEnd\n`;
-  }
-
-  // Projects Section
-  let projLatex = "";
-  if (model.projects.length > 0) {
-    projLatex = `%-----------PROJECTS-----------
-\\section{Projects}
-  \\resumeSubHeadingListStart
-${model.projects
-  .map((p) => {
-    const bulletItems = p.bullets
-      .filter((b) => b.trim().length > 0)
-      .map((b) => `        \\resumeItem{${escapeLatexText(b)}}`)
-      .join("\n");
-
-    const header = p.tech
-      ? `\\textbf{${escapeLatexText(p.name)}} $|$ \\emph{${escapeLatexText(p.tech)}}`
-      : `\\textbf{${escapeLatexText(p.name)}}`;
-
-    return `    \\resumeSubheading
-      {${header}}{${escapeLatexText(p.dates)}}
-      {${escapeLatexText(p.description)}}{${escapeLatexText(p.link)}}
-      \\resumeItemListStart
-${bulletItems}
-      \\resumeItemListEnd`;
-  })
-  .join("\n\n")}
-  \\resumeSubHeadingListEnd\n`;
-  }
-
-  // Technical Skills Section
-  let skillsLatex = "";
-  if (
-    model.skills.languages ||
-    model.skills.frameworks ||
-    model.skills.cloud ||
-    model.skills.tools
-  ) {
-    const skillLines: string[] = [];
-    if (model.skills.languages) {
-      skillLines.push(`     \\textbf{Languages}{: ${escapeLatexText(model.skills.languages)}} \\\\`);
-    }
-    if (model.skills.frameworks) {
-      skillLines.push(`     \\textbf{Frameworks \\& Libraries}{: ${escapeLatexText(model.skills.frameworks)}} \\\\`);
-    }
-    if (model.skills.cloud) {
-      skillLines.push(`     \\textbf{Cloud \\& DevOps}{: ${escapeLatexText(model.skills.cloud)}} \\\\`);
-    }
-    if (model.skills.tools) {
-      skillLines.push(`     \\textbf{Developer Tools}{: ${escapeLatexText(model.skills.tools)}}`);
-    }
-
-    skillsLatex = `%-----------TECHNICAL SKILLS-----------
-\\section{Technical Skills}
+      sectionBlocks.push(`%-----------${escapedTitle.toUpperCase()}-----------
+\\section{${escapedTitle}}
  \\begin{itemize}[leftmargin=0.15in, label={}]
     \\small{\\item{
-${skillLines.join("\n")}
+${renderedCategories}
     }}
- \\end{itemize}\n`;
+ \\end{itemize}`);
+    } else if (sec.type === "bullet_list" && sec.bullets && sec.bullets.length > 0) {
+      const renderedBullets = sec.bullets
+        .filter((b) => b.trim().length > 0)
+        .map((b) => `    \\resumeItem{${escapeLatexText(b)}}`)
+        .join("\n");
+
+      sectionBlocks.push(`%-----------${escapedTitle.toUpperCase()}-----------
+\\section{${escapedTitle}}
+ \\begin{itemize}[leftmargin=0.15in, label={}]
+${renderedBullets}
+ \\end{itemize}`);
+    } else if (sec.type === "paragraph" && sec.content) {
+      sectionBlocks.push(`%-----------${escapedTitle.toUpperCase()}-----------
+\\section{${escapedTitle}}
+${escapeLatexText(sec.content)}`);
+    } else if (sec.rawLatex) {
+      sectionBlocks.push(`%-----------${escapedTitle.toUpperCase()}-----------
+\\section{${escapedTitle}}
+${sec.rawLatex}`);
+    }
   }
 
   return `${preamble.trim()}
@@ -477,10 +479,8 @@ ${skillLines.join("\n")}
     \\small ${contactLine}
 \\end{center}
 
-${eduLatex}
-${expLatex}
-${projLatex}
-${skillsLatex}
+${sectionBlocks.join("\n\n")}
+
 \\end{document}
 `.trim();
 }

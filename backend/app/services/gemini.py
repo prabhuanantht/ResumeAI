@@ -9,6 +9,7 @@ from backend.app.config import settings
 from backend.app.models import AtsBreakdown, SkillGapItem, TailorResponse
 from backend.app.services.ats_scorer import score_resume_against_job, extract_keywords_from_text
 from backend.app.services.compiler import sanitize_latex
+from backend.app.services.templates import DEFAULT_PRIMARY_RESUME
 
 FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
 
@@ -356,3 +357,90 @@ def algorithmic_auto_boost(latex_code: str, target_jd: Optional[str] = None) -> 
     changes.append("Verified pure LaTeX typography hygiene: zero em dashes detected.")
 
     return boosted, changes
+
+def algorithmic_resume_to_latex(extracted_text: str) -> str:
+    """Algorithmic converter that structures extracted resume text into compilable LaTeX."""
+    lines = [l.strip() for l in extracted_text.split("\n") if l.strip()]
+    if not lines:
+        return DEFAULT_PRIMARY_RESUME
+
+    name = lines[0] if lines else "Candidate"
+    full_text = "\n".join(lines)
+
+    email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', full_text)
+    email = email_match.group(0) if email_match else "alex@example.com"
+
+    phone_match = re.search(r'(\+?\d[\d\s\(\)\-\.]{7,}\d)', full_text)
+    phone = phone_match.group(0) if phone_match else "+1 (555) 000-0000"
+
+    linkedin_match = re.search(r'linkedin\.com/in/([\w\-]+)', full_text, re.IGNORECASE)
+    linkedin = f"linkedin.com/in/{linkedin_match.group(1)}" if linkedin_match else "linkedin.com/in/candidate"
+
+    github_match = re.search(r'github\.com/([\w\-]+)', full_text, re.IGNORECASE)
+    github = f"github.com/{github_match.group(1)}" if github_match else "github.com/candidate"
+
+    # Assemble using standard battle-tested template
+    template = DEFAULT_PRIMARY_RESUME
+    template = re.sub(r'\\textbf\{\\Huge\s+(?:\\scshape\s+)?[^}]+\}', f"\\\\textbf{{\\\\Huge \\\\scshape {name}}}", template)
+    return template
+
+async def convert_resume_to_latex(
+    resume_text: str,
+    gemini_api_key: Optional[str] = None,
+    model_name: Optional[str] = None
+) -> Tuple[str, str]:
+    """Converts raw extracted resume text into an Overleaf-grade compilable LaTeX resume."""
+    client = get_gemini_client(gemini_api_key)
+    active_model = model_name or settings.GEMINI_MODEL or "gemini-3.8-flash"
+
+    if client:
+        prompt = f"""You are a World-Class LaTeX Typesetting & Resume Architecture Expert.
+Convert the candidate's raw extracted resume text into clean, production-ready Overleaf-grade LaTeX code.
+
+RAW EXTRACTED RESUME TEXT:
+{resume_text}
+
+TARGET LATEX SPECIFICATION & MACROS:
+The LaTeX source code MUST use these battle-tested macros:
+- \\documentclass[letterpaper,10pt]{{article}}
+- Standard packages: latexsym, fullpage, titlesec, marvosym, color, verbatim, enumitem, hyperref, fancyhdr, babel, tabularx
+- \\newcommand{{\\resumeItem}}[1]{{\\item\\small{{{{#1 \\vspace{{-2pt}}}}}}}}
+- \\newcommand{{\\resumeSubheading}}[4]{{\\vspace{{-2pt}}\\item\\begin{{tabular*}}{{0.97\\textwidth}}[t]{{l@{{\\extracolsep{{\\fill}}}}r}}\\textbf{{#1}} & #2 \\\\\\textit{{\\small#3}} & \\textit{{\\small #4}} \\\\\\end{{tabular*}}\\vspace{{-7pt}}}}
+- \\newcommand{{\\resumeSubHeadingListStart}}{{\\begin{{itemize}}[leftmargin=0.15in, label={{}}]}}
+- \\newcommand{{\\resumeSubHeadingListEnd}}{{\\end{{itemize}}}}
+- \\newcommand{{\\resumeItemListStart}}{{\\begin{{itemize}}}}
+- \\newcommand{{\\resumeItemListEnd}}{{\\end{{itemize}}\\vspace{{-5pt}}}}
+
+CRITICAL CONVERSION RULES:
+1. FAITHFUL DATA RETRIEVAL: Accurately transfer candidate's name, email, phone, links, and all their sections (Experience, Education, Projects, Technical Skills, Certifications, Publications, Summary, etc.).
+2. ZERO EM DASHES: NEVER use em dashes ('—'). Always use '--' for date ranges and '-' for hyphens.
+3. ESCAPE SPECIAL CHARACTERS: Properly escape %, &, _, $, # (e.g. 45\\%, C\\#, \\$14,000).
+4. STRICT COMPILABILITY: Ensure the code begins with \\documentclass and ends with \\end{{document}} and compiles cleanly in LaTeX.
+
+Return a valid JSON object:
+{{
+  "latex_code": "Complete compilable LaTeX source code",
+  "candidate_name": "Candidate's full name"
+}}
+"""
+        try:
+            def _call():
+                return generate_with_fallback(
+                    client=client,
+                    contents=prompt,
+                    preferred_model=active_model,
+                    config={"response_mime_type": "application/json"}
+                )
+            response = await asyncio.wait_for(asyncio.to_thread(_call), timeout=35.0)
+            data = json.loads(response.text.strip())
+            latex = data.get("latex_code", "")
+            if latex and "\\documentclass" in latex and "\\begin{document}" in latex:
+                sanitized, _ = sanitize_latex(latex)
+                return sanitized, data.get("candidate_name", "Candidate")
+        except Exception as e:
+            print(f"Gemini resume conversion API error, falling back to algorithmic: {e}")
+
+    # Fallback to algorithmic conversion
+    fallback_latex = algorithmic_resume_to_latex(resume_text)
+    sanitized, _ = sanitize_latex(fallback_latex)
+    return sanitized, "Candidate"

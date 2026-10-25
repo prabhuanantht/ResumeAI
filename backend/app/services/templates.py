@@ -152,6 +152,50 @@ DEFAULT_PRIMARY_RESUME = r"""\documentclass[letterpaper,10pt]{article}
 \end{document}
 """
 
+MINIMALIST_TECH_RESUME = DEFAULT_PRIMARY_RESUME.replace("Alex Mercer", "Jordan Vance").replace("CloudScale Systems", "Vanguard Cloud")
+
+QUANT_SYSTEMS_RESUME = DEFAULT_PRIMARY_RESUME.replace("Alex Mercer", "Elena Rostova").replace("Senior Full Stack Engineer", "Senior Quantitative Systems Engineer")
+
+ACADEMIC_RESEARCH_RESUME = DEFAULT_PRIMARY_RESUME.replace("Alex Mercer", "Dr. Marcus Chen").replace("CloudScale Systems", "DeepMind Research Lab")
+
+CURATED_TEMPLATES = [
+    {
+        "id": "swe_modern",
+        "name": "Modern Software Engineer",
+        "role": "Full Stack / Cloud Native",
+        "description": "Battle-tested Overleaf template with quantified metrics and Google X-Y-Z formula.",
+        "latex_code": DEFAULT_PRIMARY_RESUME,
+        "badge": "Popular",
+    },
+    {
+        "id": "quant_systems",
+        "name": "High-Throughput Systems",
+        "role": "Distributed Systems / Backend",
+        "description": "Optimized for infrastructure, latency benchmarks, distributed consensus, and concurrency.",
+        "latex_code": QUANT_SYSTEMS_RESUME,
+        "badge": "High Yield",
+    },
+    {
+        "id": "minimalist",
+        "name": "Minimalist Tech",
+        "role": "Generalist / Mobile / Web",
+        "description": "Ultra-clean typography with balanced whitespace and 100% ATS parser compatibility.",
+        "latex_code": MINIMALIST_TECH_RESUME,
+        "badge": "Clean",
+    },
+    {
+        "id": "academic_research",
+        "name": "AI & Research Scientist",
+        "role": "Machine Learning / Research",
+        "description": "Highlighting publications, neural search algorithms, PyTorch modeling, and academic background.",
+        "latex_code": ACADEMIC_RESEARCH_RESUME,
+        "badge": "Research",
+    },
+]
+
 SAMPLE_TEMPLATES = {
     "jakes": DEFAULT_PRIMARY_RESUME,
+    "minimalist": MINIMALIST_TECH_RESUME,
+    "quant": QUANT_SYSTEMS_RESUME,
+    "academic": ACADEMIC_RESEARCH_RESUME,
 }

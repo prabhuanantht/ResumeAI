@@ -1,9 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/navigation/Navbar";
 import AmbientCanvas from "@/components/3d/AmbientCanvas";
+import ResumeImportModal from "@/components/upload/ResumeImportModal";
 import { 
   Sparkles, 
   ArrowRight, 
@@ -15,10 +16,12 @@ import {
   CheckCircle2, 
   Download, 
   Sliders,
-  Check
+  Check,
+  Upload
 } from "lucide-react";
 
 export default function LandingPage() {
+  const [importModalOpen, setImportModalOpen] = useState(false);
   return (
     <div className="relative min-h-screen bg-[#09090b] text-white overflow-hidden flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
       {/* 3D Ambient Canvas Background */}
@@ -50,31 +53,31 @@ export default function LandingPage() {
           Scrapes job postings, measures ATS compatibility, enforces typography hygiene, and asks honest questions instead of hallucinating skills.
         </p>
 
-        {/* CTA Button Cluster */}
+        {/* CTA Button Cluster: Upload Resume + Studio + Tailor */}
         <div className="mt-8 flex flex-col sm:flex-row items-center gap-3.5">
+          <button
+            onClick={() => setImportModalOpen(true)}
+            className="group flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-6 py-3.5 text-sm font-bold text-zinc-950 shadow-xl shadow-emerald-500/20 hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer"
+          >
+            <Upload className="h-4 w-4" />
+            <span>Upload Existing Resume</span>
+            <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+          </button>
+
           <Link
             href="/studio"
-            className="group flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-6 py-3 text-sm font-bold text-zinc-950 shadow-xl shadow-emerald-500/20 hover:scale-[1.03] active:scale-[0.98] transition-all"
+            className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/90 px-5 py-3.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 hover:border-zinc-700 transition-all backdrop-blur-sm shadow-md"
           >
-            <Code2 className="h-4 w-4" />
+            <Code2 className="h-4 w-4 text-emerald-400" />
             <span>Open Studio Editor</span>
-            <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
 
           <Link
             href="/tailor"
-            className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/90 px-6 py-3 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 hover:border-zinc-700 transition-all backdrop-blur-sm shadow-md"
+            className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-3.5 text-sm font-medium text-zinc-300 hover:text-white transition-all"
           >
             <Sparkles className="h-4 w-4 text-emerald-400" />
             <span>Tailor from Job URL</span>
-          </Link>
-
-          <Link
-            href="/settings"
-            className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm font-medium text-zinc-400 hover:text-white transition-all"
-          >
-            <Sliders className="h-4 w-4" />
-            <span>System Prompts</span>
           </Link>
         </div>
 
@@ -179,8 +182,14 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-zinc-900 bg-zinc-950/80 py-6 text-center text-xs text-zinc-500 font-mono">
-        TeXCraft Studio • Overleaf-Grade LaTeX Resume Engine • Free &amp; Open Source
+        ResumeAI • Overleaf-Grade LaTeX Resume Builder &amp; ATS Optimizer
       </footer>
+
+      {/* Global Resume Import & Template Selection Modal */}
+      <ResumeImportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+      />
     </div>
   );
 }
