@@ -247,15 +247,23 @@ export default function PdfViewer({
     };
   }, [renderPdfPage]);
 
-  // Fit Width logic: responsive to desktop and 11-inch iPad
+  // Fit Width logic: always ensures standard 100% (never overshoots to 105%+)
   const handleFitWidth = () => {
-    if (!containerRef.current || pageSize.width === 0) return;
-    const availableWidth = containerRef.current.clientWidth - 48; // minus padding
-    if (availableWidth > 0) {
-      const calculatedZoom = Math.min(180, Math.max(50, Math.floor((availableWidth / pageSize.width) * 100)));
-      setZoom(calculatedZoom);
+    if (!containerRef.current || pageSize.width === 0) {
+      setZoom(100);
       setIsFitWidth(true);
+      return;
     }
+    const availableWidth = containerRef.current.clientWidth - 48; // minus padding
+    if (availableWidth >= pageSize.width) {
+      setZoom(100);
+    } else if (availableWidth > 0) {
+      const calculatedZoom = Math.min(100, Math.max(50, Math.floor((availableWidth / pageSize.width) * 100)));
+      setZoom(calculatedZoom);
+    } else {
+      setZoom(100);
+    }
+    setIsFitWidth(true);
   };
 
   useEffect(() => {
