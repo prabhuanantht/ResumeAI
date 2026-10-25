@@ -247,18 +247,19 @@ export default function PdfViewer({
     };
   }, [renderPdfPage]);
 
-  // Fit Width logic: always ensures standard 100% (never overshoots to 105%+)
+  // Fit Width logic: always ensures standard 100% on desktop, scales smoothly on mobile
   const handleFitWidth = () => {
     if (!containerRef.current || pageSize.width === 0) {
       setZoom(100);
       setIsFitWidth(true);
       return;
     }
-    const availableWidth = containerRef.current.clientWidth - 48; // minus padding
+    const padding = typeof window !== "undefined" && window.innerWidth < 640 ? 16 : 48;
+    const availableWidth = containerRef.current.clientWidth - padding;
     if (availableWidth >= pageSize.width) {
       setZoom(100);
     } else if (availableWidth > 0) {
-      const calculatedZoom = Math.min(100, Math.max(50, Math.floor((availableWidth / pageSize.width) * 100)));
+      const calculatedZoom = Math.min(100, Math.max(35, Math.floor((availableWidth / pageSize.width) * 100)));
       setZoom(calculatedZoom);
     } else {
       setZoom(100);
@@ -510,7 +511,7 @@ export default function PdfViewer({
       {/* PDF Viewport with Crisp Canvas & Click-to-Source Text Layer */}
       <div
         ref={containerRef}
-        className="relative flex-1 overflow-x-auto overflow-y-auto bg-zinc-900/80 p-4 sm:p-8 touch-pan-x touch-pan-y"
+        className="relative flex-1 overflow-x-auto overflow-y-auto bg-zinc-900/80 p-2 sm:p-6 touch-pan-x touch-pan-y"
         style={{
           WebkitOverflowScrolling: "touch",
         }}

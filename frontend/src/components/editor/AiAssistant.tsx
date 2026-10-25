@@ -140,7 +140,7 @@ export default function AiAssistant({
   };
 
   return (
-    <div className="flex h-full flex-col border-l border-zinc-800 bg-zinc-950/95 backdrop-blur-xl w-84 sm:w-96 shadow-2xl shrink-0">
+    <div className="fixed inset-y-0 right-0 z-50 flex h-full w-full sm:w-96 flex-col border-l border-zinc-800 bg-zinc-950/98 backdrop-blur-2xl shadow-2xl animate-in slide-in-from-right duration-200">
       {/* Drawer Header */}
       <div className="flex h-10 items-center justify-between border-b border-zinc-800 px-4">
         <div className="flex items-center gap-2">

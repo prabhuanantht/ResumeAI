@@ -54,10 +54,10 @@ export default function LandingPage() {
         </p>
 
         {/* CTA Button Cluster: Upload Resume + Studio + Tailor */}
-        <div className="mt-8 flex flex-col sm:flex-row items-center gap-3.5">
+        <div className="mt-8 flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto max-w-md sm:max-w-none">
           <button
             onClick={() => setImportModalOpen(true)}
-            className="group flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-6 py-3.5 text-sm font-bold text-zinc-950 shadow-xl shadow-emerald-500/20 hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer"
+            className="group w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-6 py-3.5 text-sm font-bold text-zinc-950 shadow-xl shadow-emerald-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer touch-manipulation"
           >
             <Upload className="h-4 w-4" />
             <span>Upload Existing Resume</span>
@@ -66,7 +66,7 @@ export default function LandingPage() {
 
           <Link
             href="/studio"
-            className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/90 px-5 py-3.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 hover:border-zinc-700 transition-all backdrop-blur-sm shadow-md"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/90 px-5 py-3.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 hover:border-zinc-700 transition-all backdrop-blur-sm shadow-md touch-manipulation"
           >
             <Code2 className="h-4 w-4 text-emerald-400" />
             <span>Open Studio Editor</span>
@@ -74,7 +74,7 @@ export default function LandingPage() {
 
           <Link
             href="/tailor"
-            className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-3.5 text-sm font-medium text-zinc-300 hover:text-white transition-all"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-3.5 text-sm font-medium text-zinc-300 hover:text-white transition-all touch-manipulation"
           >
             <Sparkles className="h-4 w-4 text-emerald-400" />
             <span>Tailor from Job URL</span>
@@ -90,10 +90,10 @@ export default function LandingPage() {
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
               <span className="ml-2 font-mono text-zinc-400">resumeai / resume.tex</span>
             </div>
-            <div className="flex items-center gap-3 text-zinc-500 font-mono text-[11px]">
-              <span className="text-emerald-400">ATS Score: 94%</span>
-              <span>•</span>
-              <span>Rust Compiler Engine</span>
+            <div className="flex items-center gap-2 sm:gap-3 text-zinc-500 font-mono text-[10px] sm:text-[11px]">
+              <span className="text-emerald-400">ATS: 94%</span>
+              <span className="hidden sm:inline">•</span>
+              <span className="hidden sm:inline">Rust Compiler</span>
             </div>
           </div>
 

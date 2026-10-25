@@ -142,10 +142,10 @@ export default function TailorPage() {
           </div>
 
           {tailorResult && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
               <Link
                 href="/studio"
-                className="flex items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 transition-all"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 transition-all touch-manipulation"
               >
                 <Code2 className="h-4 w-4 text-emerald-400" />
                 <span>Open in Studio Editor</span>
@@ -153,7 +153,7 @@ export default function TailorPage() {
 
               <button
                 onClick={handleDownloadPdf}
-                className="flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 px-4 py-2.5 text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 px-4 py-2.5 text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all touch-manipulation"
               >
                 <Download className="h-4 w-4" />
                 <span>Download PDF</span>
@@ -208,10 +208,10 @@ export default function TailorPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                 <button
                   onClick={handleDownloadPdf}
-                  className="flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-xs font-bold text-zinc-950 transition-colors shadow-sm"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-xs font-bold text-zinc-950 transition-colors shadow-sm touch-manipulation"
                 >
                   <Download className="h-3.5 w-3.5" />
                   <span>Download .PDF</span>
@@ -219,7 +219,7 @@ export default function TailorPage() {
 
                 <button
                   onClick={handleDownloadWord}
-                  className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 transition-colors"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 transition-colors touch-manipulation"
                 >
                   <FileType className="h-3.5 w-3.5 text-blue-400" />
                   <span>Download .DOCX</span>
@@ -227,7 +227,7 @@ export default function TailorPage() {
 
                 <button
                   onClick={() => downloadText(tailorResult.tailored_latex, `${tailorResult.company}_Resume.tex`)}
-                  className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 hover:bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-400 transition-colors"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 hover:bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-400 transition-colors touch-manipulation"
                 >
                   <FileText className="h-3.5 w-3.5 text-amber-400" />
                   <span>Source .TEX</span>

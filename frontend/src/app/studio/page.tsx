@@ -68,6 +68,19 @@ export default function StudioPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
 
+  // Mobile Responsiveness State
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  const [mobileTab, setMobileTab] = useState<"editor" | "preview">("editor");
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   // SyncTeX Click-to-Source Line Navigation
   const [targetLine, setTargetLine] = useState<number | null>(null);
   const [targetLabel, setTargetLabel] = useState<string | null>(null);
@@ -281,7 +294,9 @@ export default function StudioPage() {
   const handleNavigateToLine = (lineNumber: number, label: string) => {
     setTargetLine(lineNumber);
     setTargetLabel(label);
-    if (viewMode === "preview") {
+    if (isMobile) {
+      setMobileTab("editor");
+    } else if (viewMode === "preview") {
       setViewMode("split");
     }
   };
@@ -353,16 +368,16 @@ export default function StudioPage() {
       {/* Main Studio Canvas with Pro Draggable Divider */}
       <main
         ref={mainContainerRef}
-        className="relative flex flex-1 overflow-hidden p-2 sm:p-2.5 min-h-0 select-text"
+        className="relative flex flex-1 overflow-hidden p-1.5 sm:p-2.5 min-h-0 select-text"
       >
-        {/* Left Column: Monaco Code Editor */}
-        {viewMode !== "preview" && (
+        {/* Left Column: Editor (Visual Text or Monaco Code) */}
+        {(!isMobile ? viewMode !== "preview" : mobileTab === "editor") && (
           <div
             style={{
-              width: viewMode === "split" ? `${splitRatio}%` : "100%",
-              minWidth: viewMode === "split" ? "260px" : undefined,
+              width: !isMobile && viewMode === "split" ? `${splitRatio}%` : "100%",
+              minWidth: !isMobile && viewMode === "split" ? "260px" : undefined,
             }}
-            className="h-full min-h-0 transition-[width] duration-75"
+            className="h-full min-h-0 transition-[width] duration-75 w-full"
           >
             <LatexEditor
               code={latexCode}
@@ -372,8 +387,14 @@ export default function StudioPage() {
               errors={errors}
               targetLine={targetLine}
               targetLabel={targetLabel}
-              viewMode={viewMode}
-              onViewModeChange={(m) => setViewMode(m)}
+              viewMode={isMobile ? "editor" : viewMode}
+              onViewModeChange={(m) => {
+                if (isMobile) {
+                  setMobileTab(m === "preview" ? "preview" : "editor");
+                } else {
+                  setViewMode(m);
+                }
+              }}
               liveAtsScore={liveAtsScore}
               onOpenScore={() => setIsScoreOpen(true)}
               onToggleAi={() => setIsAiOpen(!isAiOpen)}
@@ -383,8 +404,8 @@ export default function StudioPage() {
           </div>
         )}
 
-        {/* Pro Draggable Split Divider on Desktop PC */}
-        {viewMode === "split" && (
+        {/* Pro Draggable Split Divider on Desktop PC Only */}
+        {!isMobile && viewMode === "split" && (
           <div
             onMouseDown={(e) => {
               e.preventDefault();
@@ -394,21 +415,21 @@ export default function StudioPage() {
             title="Drag to resize panels • Double-click to reset 50/50"
             className="group relative flex w-3 items-center justify-center cursor-col-resize select-none shrink-0 z-20"
           >
-            {/* Delicate shaped pill handle without rectangular highlight */}
+            {/* Delicate shaped pill handle */}
             <div className="flex h-10 w-1.5 items-center justify-center rounded-full bg-zinc-800/90 border border-zinc-700/60 shadow-sm group-hover:bg-emerald-400 group-hover:border-emerald-300 group-hover:h-16 group-hover:shadow-[0_0_12px_rgba(52,211,153,0.6)] group-active:bg-emerald-400 group-active:h-16 transition-all duration-200">
               <div className="h-4 w-0.5 rounded-full bg-zinc-600 group-hover:bg-zinc-950 transition-colors" />
             </div>
           </div>
         )}
 
-        {/* Right Column: PDF Preview Viewport with horizontal scroll */}
-        {viewMode !== "editor" && (
+        {/* Right Column: PDF Preview Viewport */}
+        {(!isMobile ? viewMode !== "editor" : mobileTab === "preview") && (
           <div
             style={{
-              width: viewMode === "split" ? `${100 - splitRatio}%` : "100%",
-              minWidth: viewMode === "split" ? "280px" : undefined,
+              width: !isMobile && viewMode === "split" ? `${100 - splitRatio}%` : "100%",
+              minWidth: !isMobile && viewMode === "split" ? "280px" : undefined,
             }}
-            className="h-full min-h-0 transition-[width] duration-75"
+            className="h-full min-h-0 transition-[width] duration-75 w-full"
           >
             <PdfViewer
               pdfUrl={pdfUrl}
@@ -419,9 +440,47 @@ export default function StudioPage() {
               onOpenScore={() => setIsScoreOpen(true)}
               atsScore={liveAtsScore}
               onNavigateToLine={handleNavigateToLine}
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
+              viewMode={isMobile ? "preview" : viewMode}
+              onViewModeChange={(m) => {
+                if (isMobile) {
+                  setMobileTab(m === "preview" ? "preview" : "editor");
+                } else {
+                  setViewMode(m);
+                }
+              }}
             />
+          </div>
+        )}
+
+        {/* Mobile Floating Quick Switch Bar */}
+        {isMobile && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-950/95 p-1 shadow-2xl backdrop-blur-xl animate-in slide-in-from-bottom-2">
+            <button
+              onClick={() => setMobileTab("editor")}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all touch-manipulation ${
+                mobileTab === "editor"
+                  ? "bg-emerald-500 text-zinc-950 shadow-md font-bold"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Code2 className="h-3.5 w-3.5" />
+              <span>Editor</span>
+            </button>
+            <button
+              onClick={() => {
+                setMobileTab("preview");
+                if (!pdfUrl) triggerCompile(latexCode);
+              }}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all touch-manipulation ${
+                mobileTab === "preview"
+                  ? "bg-emerald-500 text-zinc-950 shadow-md font-bold"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span>PDF Preview</span>
+              {isCompiling && <Loader2 className="h-3 w-3 animate-spin text-zinc-950" />}
+            </button>
           </div>
         )}
 

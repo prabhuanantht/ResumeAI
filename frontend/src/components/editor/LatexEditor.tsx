@@ -152,9 +152,9 @@ export default function LatexEditor({
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl">
       {/* Single-Line Compact Toolbar: Icons Only (Except Copilot) */}
-      <div className="flex h-10 items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-3 text-xs shrink-0 select-none">
+      <div className="flex h-10 items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-2 sm:px-3 text-xs shrink-0 select-none overflow-x-auto no-scrollbar gap-2">
         {/* Left: Mode Toggle (Text vs Code) + Compile Icon + Undo / Redo */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Editor Mode Switcher: Text (Visual) vs Code (LaTeX) */}
           <div className="flex items-center rounded-md border border-zinc-800 bg-zinc-950 p-0.5">
             <button
@@ -235,7 +235,7 @@ export default function LatexEditor({
         </div>
 
         {/* Right: View Modes (Icons) + ATS Score (Icon+Number) + Copilot (The Only Text Button) + Copy Icon */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* View Mode Switcher (Icons Only) */}
           {onViewModeChange && (
             <div className="flex items-center rounded-md border border-zinc-800 bg-zinc-950 p-0.5">

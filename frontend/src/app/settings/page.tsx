@@ -112,7 +112,7 @@ export default function SettingsPage() {
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex items-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 px-5 py-2.5 text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 px-5 py-2.5 text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50 touch-manipulation"
           >
             {saveSuccess ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
             <span>{saveSuccess ? "Saved Settings!" : isSaving ? "Saving..." : "Save Settings"}</span>

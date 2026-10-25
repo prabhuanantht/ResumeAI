@@ -116,9 +116,9 @@ export default function ApiKeyModal({ isOpen, onClose, onKeySaved }: ApiKeyModal
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 sm:p-4 backdrop-blur-md animate-in fade-in duration-200">
       <div 
-        className="relative w-full max-w-xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl sm:p-7"
+        className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950 p-4 sm:p-7 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Glow accent */}
