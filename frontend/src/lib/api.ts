@@ -134,6 +134,19 @@ export async function chatEditResume(payload: {
   return res.json();
 }
 
+export async function scoreResume(payload: {
+  latex_code: string;
+  job_description?: string;
+}): Promise<AtsBreakdown> {
+  const res = await fetch(`${API_BASE}/api/resumes/score`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Resume scoring failed");
+  return res.json();
+}
+
 export async function compilePdf(latexCode: string, filename = "resume"): Promise<Blob> {
   const res = await fetch(`${API_BASE}/api/compile/pdf`, {
     method: "POST",

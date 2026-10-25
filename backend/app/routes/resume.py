@@ -1,11 +1,34 @@
 import json
 import uuid
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
 from backend.app.database import get_db_connection
-from backend.app.models import Profile, TailorResponse
+from backend.app.models import Profile, TailorResponse, AtsBreakdown
 from backend.app.services.templates import DEFAULT_PRIMARY_RESUME
+from backend.app.services.ats_scorer import score_resume_against_job
 
 router = APIRouter(prefix="/api/resumes", tags=["Resumes"])
+
+class ScoreRequest(BaseModel):
+    latex_code: str
+    job_description: Optional[str] = ""
+
+@router.post("/score", response_model=AtsBreakdown)
+async def score_resume(req: ScoreRequest):
+    async with get_db_connection() as db:
+        forbidden_words = ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
+        async with db.execute("SELECT forbidden_words FROM settings WHERE id = 'default_settings'") as cursor:
+            s_row = await cursor.fetchone()
+            if s_row and s_row[0]:
+                forbidden_words = json.loads(s_row[0])
+
+    breakdown = score_resume_against_job(
+        resume_latex=req.latex_code,
+        job_description=req.job_description or "General Software Engineering, Distributed Systems, Cloud Architecture, Full Stack",
+        forbidden_words=forbidden_words
+    )
+    return breakdown
 
 @router.get("/profile", response_model=Profile)
 async def get_user_profile():

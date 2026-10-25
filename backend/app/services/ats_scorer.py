@@ -14,11 +14,12 @@ COMMON_TECH_SKILLS = [
 STRONG_ACTION_VERBS = {
     "architected", "engineered", "designed", "developed", "implemented", "scaled", "optimized",
     "automated", "reduced", "accelerated", "constructed", "built", "authored", "deployed",
-    "streamlined", "orchestrated", "consolidated", "launched", "eliminated", "delivered"
+    "streamlined", "orchestrated", "consolidated", "launched", "eliminated", "delivered",
+    "spearheaded", "mentored", "maintained", "instrumented"
 }
 
 WEAK_OR_CLICHE_VERBS = {
-    "spearheaded", "synergized", "leveraged", "game-changing", "tapestry", "delve",
+    "synergized", "leveraged", "game-changing", "tapestry", "delve",
     "worked on", "helped", "assisted", "responsible for", "participated in"
 }
 
@@ -44,15 +45,15 @@ def score_resume_against_job(resume_latex: str, job_description: str, forbidden_
     """
     Computes an objective, deeply quantified ATS Match Score & Breakdown.
     """
-    forbidden_words = forbidden_words or ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
+    forbidden_words = forbidden_words or ["synergized", "leverage", "game-changing", "tapestry", "delve"]
     
     # 1. Keywords Match
     jd_keywords = extract_keywords_from_text(job_description)
     resume_keywords = extract_keywords_from_text(resume_latex)
     
     if not jd_keywords:
-        # Fallback if JD is generic
-        jd_keywords = ["python", "typescript", "react", "fastapi", "docker", "aws", "sql"]
+        # General tech baseline
+        jd_keywords = ["python", "typescript", "react", "fastapi", "docker", "aws", "sql", "git"]
         
     matched = [k for k in jd_keywords if k in resume_keywords]
     missing = [k for k in jd_keywords if k not in resume_keywords]
@@ -60,8 +61,10 @@ def score_resume_against_job(resume_latex: str, job_description: str, forbidden_
     keyword_match_score = int((len(matched) / max(len(jd_keywords), 1)) * 100)
     
     # 2. Impact & Metrics Detection
-    # Look for bullet points in LaTeX
-    bullet_items = re.findall(r"\\resumeItem\{([^}]+)\}", resume_latex) or re.findall(r"\\item\s*(.*)", resume_latex)
+    # Robust bullet point extractor supporting nested braces and newlines
+    bullet_items = re.findall(r"\\resumeItem\{((?:[^{}]|\{[^{}]*\})*)\}", resume_latex, re.DOTALL)
+    if not bullet_items:
+        bullet_items = re.findall(r"\\item\s+(.*?)(?=\\item|\\end|\Z)", resume_latex, re.DOTALL)
     total_bullets = max(len(bullet_items), 1)
     
     metric_bullets = 0
@@ -72,10 +75,12 @@ def score_resume_against_job(resume_latex: str, job_description: str, forbidden_
     
     for b in bullet_items:
         clean_bullet = re.sub(r"\\[a-zA-Z]+(?:\{[^}]*\})?", "", b).strip()
+        clean_bullet = re.sub(r"\s+", " ", clean_bullet)
         if metric_pattern.search(clean_bullet):
             metric_bullets += 1
             
         first_word = clean_bullet.split()[0].lower() if clean_bullet.split() else ""
+        first_word = re.sub(r"[^\w]", "", first_word)
         if first_word in STRONG_ACTION_VERBS or first_word.endswith("ed"):
             action_verb_count += 1
             
@@ -83,8 +88,8 @@ def score_resume_against_job(resume_latex: str, job_description: str, forbidden_
             if fw.lower() in clean_bullet.lower():
                 cliche_penalty += 5
 
-    impact_score = min(100, int((metric_bullets / total_bullets) * 115))
-    action_verbs_score = max(0, min(100, int((action_verb_count / total_bullets) * 100) - cliche_penalty))
+    impact_score = min(100, int((metric_bullets / total_bullets) * 110))
+    action_verbs_score = max(0, min(100, int((action_verb_count / total_bullets) * 105) - cliche_penalty))
     
     # 3. Formatting & Typography Hygiene
     em_dash_count = resume_latex.count("—")
@@ -95,16 +100,26 @@ def score_resume_against_job(resume_latex: str, job_description: str, forbidden_
         formatting_score -= min(30, em_dash_count * 10)
         feedback_notes.append(f"Contains {em_dash_count} em dash(es) ('—'). We automatically normalize this to LaTeX '--' for clean ATS typesetting.")
     else:
-        feedback_notes.append("Clean typography: zero em dashes detected.")
+        feedback_notes.append("Clean typography: zero em dashes detected (Pure LaTeX standard).")
         
-    # Check sections
-    essential_sections = ["education", "experience", "skills"]
-    missing_sections = [sec for sec in essential_sections if f"\\section{{{sec}" not in resume_latex.lower()]
+    # Check core sections with robust alias matching
+    essential_sections = [
+        ("Education", ["education", "academic background"]),
+        ("Experience", ["experience", "employment", "work history"]),
+        ("Skills", ["skills", "technical skills", "technologies", "core competencies"])
+    ]
+    missing_sections = []
+    latex_lower = resume_latex.lower()
+    for name, aliases in essential_sections:
+        found = any(f"\\section{{{alias}" in latex_lower or f"\\section*{{{alias}" in latex_lower for alias in aliases)
+        if not found:
+            missing_sections.append(name)
+
     if missing_sections:
         formatting_score -= (len(missing_sections) * 15)
-        feedback_notes.append(f"Missing core section(s): {', '.join(missing_sections).title()}.")
+        feedback_notes.append(f"Missing core section(s): {', '.join(missing_sections)}.")
     else:
-        feedback_notes.append("All core ATS sections verified (Education, Experience, Skills).")
+        feedback_notes.append("All core ATS sections verified (Education, Experience, Technical Skills).")
         
     formatting_score = max(20, min(100, formatting_score))
     
@@ -116,10 +131,10 @@ def score_resume_against_job(resume_latex: str, job_description: str, forbidden_
         (0.15 * formatting_score)
     )
     
-    if impact_score > 75:
+    if impact_score > 70:
         feedback_notes.append(f"Strong quantification: {metric_bullets} of {total_bullets} bullet points include concrete metrics.")
     else:
-        feedback_notes.append("Opportunity: Add more quantifiable metrics (%, $, latency, scale) to your bullet points.")
+        feedback_notes.append(f"Add metrics: {metric_bullets} of {total_bullets} bullet points include numbers or percentages.")
 
     return AtsBreakdown(
         overall_score=overall_score,
