@@ -1,4 +1,6 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined" ? "" : "http://localhost:8000");
 
 export const STORAGE_KEYS = {
   GEMINI_API_KEY: "resumeai_gemini_api_key",

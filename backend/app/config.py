@@ -20,7 +20,10 @@ class Settings(BaseModel):
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
-    DB_PATH: str = os.getenv("DB_PATH", os.path.expanduser("~/.gemini/resumebuilder.db"))
+    DB_PATH: str = os.getenv(
+        "DB_PATH",
+        "/tmp/resumebuilder.db" if (os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or not os.access(os.path.expanduser("~"), os.W_OK)) else os.path.expanduser("~/.gemini/resumebuilder.db")
+    )
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",

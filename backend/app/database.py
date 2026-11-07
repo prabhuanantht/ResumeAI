@@ -3,9 +3,13 @@ import os
 from backend.app.config import settings
 
 async def init_db():
-    db_dir = os.path.dirname(settings.DB_PATH)
-    if db_dir and not os.path.exists(db_dir):
-        os.makedirs(db_dir, exist_ok=True)
+    try:
+        db_dir = os.path.dirname(settings.DB_PATH)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+    except OSError:
+        settings.DB_PATH = "/tmp/resumebuilder.db"
+        os.makedirs(os.path.dirname(settings.DB_PATH), exist_ok=True)
 
     async with aiosqlite.connect(settings.DB_PATH) as db:
         await db.execute("""

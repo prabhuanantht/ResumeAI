@@ -50,6 +50,53 @@ def parse_tectonic_errors(output: str) -> List[Dict[str, str]]:
                 errors.append({"line": "general", "message": line.strip()})
     return errors
 
+def get_tectonic_executable() -> Optional[str]:
+    """Finds or unpacks tectonic binary for the current environment."""
+    # 1. Check system PATH
+    path = shutil.which("tectonic")
+    if path and os.access(path, os.X_OK):
+        return path
+
+    # 2. Check /tmp/tectonic
+    tmp_tectonic = "/tmp/tectonic"
+    if os.path.isfile(tmp_tectonic) and os.access(tmp_tectonic, os.X_OK):
+        return tmp_tectonic
+
+    # 3. Check bundled tar.gz
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    bundled_tar = os.path.join(base_dir, "bin", "tectonic-linux-x86_64.tar.gz")
+    if os.path.isfile(bundled_tar):
+        try:
+            import tarfile
+            with tarfile.open(bundled_tar, "r:gz") as tar:
+                for member in tar.getmembers():
+                    if member.name == "tectonic" or member.name.endswith("/tectonic"):
+                        member.name = "tectonic"
+                        tar.extract(member, path="/tmp")
+                        os.chmod(tmp_tectonic, 0o755)
+                        return tmp_tectonic
+        except Exception as e:
+            print(f"Failed to unpack bundled tectonic: {e}")
+
+    # 4. Fallback: download if missing in Linux serverless
+    try:
+        import urllib.request
+        import tarfile
+        url = "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic@0.15.0/tectonic-0.15.0-x86_64-unknown-linux-musl.tar.gz"
+        tar_path = "/tmp/tectonic.tar.gz"
+        urllib.request.urlretrieve(url, tar_path)
+        with tarfile.open(tar_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.name == "tectonic" or member.name.endswith("/tectonic"):
+                    member.name = "tectonic"
+                    tar.extract(member, path="/tmp")
+                    os.chmod(tmp_tectonic, 0o755)
+                    return tmp_tectonic
+    except Exception as e:
+        print(f"Failed to download tectonic fallback: {e}")
+
+    return None
+
 def compile_latex_to_pdf(latex_code: str) -> Tuple[Optional[bytes], Optional[str], List[str]]:
     """
     Compiles LaTeX to PDF using Tectonic.
@@ -57,6 +104,20 @@ def compile_latex_to_pdf(latex_code: str) -> Tuple[Optional[bytes], Optional[str
     """
     latex_code, fixes = sanitize_latex(latex_code)
     
+    tectonic_bin = get_tectonic_executable()
+    if not tectonic_bin:
+        return None, "Tectonic LaTeX compiler not found on system PATH or serverless environment.", fixes
+
+    env = os.environ.copy()
+    if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or not os.access(os.path.expanduser("~"), os.W_OK):
+        cache_dir = os.getenv("TECTONIC_CACHE_DIR", "/tmp/tectonic_cache")
+        os.makedirs(cache_dir, exist_ok=True)
+        env["HOME"] = "/tmp"
+        env["XDG_CONFIG_HOME"] = "/tmp"
+        env["XDG_CACHE_HOME"] = "/tmp"
+        env["XDG_DATA_HOME"] = "/tmp"
+        env["TECTONIC_CACHE_DIR"] = cache_dir
+
     with tempfile.TemporaryDirectory() as temp_dir:
         tex_path = os.path.join(temp_dir, "resume.tex")
         pdf_path = os.path.join(temp_dir, "resume.pdf")
@@ -64,9 +125,9 @@ def compile_latex_to_pdf(latex_code: str) -> Tuple[Optional[bytes], Optional[str
         with open(tex_path, "w", encoding="utf-8") as f:
             f.write(latex_code)
             
-        cmd = ["tectonic", "-o", temp_dir, tex_path]
+        cmd = [tectonic_bin, "-o", temp_dir, tex_path]
         try:
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=45, env=env)
             if res.returncode == 0 and os.path.exists(pdf_path):
                 with open(pdf_path, "rb") as pf:
                     pdf_bytes = pf.read()
@@ -75,7 +136,7 @@ def compile_latex_to_pdf(latex_code: str) -> Tuple[Optional[bytes], Optional[str
                 err_log = res.stderr + "\n" + res.stdout
                 return None, err_log or "Compilation failed without output.", fixes
         except subprocess.TimeoutExpired:
-            return None, "LaTeX compilation timed out after 30 seconds.", fixes
+            return None, "LaTeX compilation timed out after 45 seconds.", fixes
         except FileNotFoundError:
             return None, "Tectonic LaTeX compiler not found on system PATH.", fixes
         except Exception as e:
