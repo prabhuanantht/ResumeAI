@@ -11,9 +11,9 @@ from backend.app.services.ats_scorer import score_resume_against_job, extract_ke
 from backend.app.services.compiler import sanitize_latex
 from backend.app.services.templates import DEFAULT_PRIMARY_RESUME
 
-FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-flash-latest"]
 
-def generate_with_fallback(client, contents, preferred_model="gemini-3.8-flash", config=None):
+def generate_with_fallback(client, contents, preferred_model="gemini-3.5-flash", config=None):
     candidates = [preferred_model] + [m for m in FALLBACK_MODELS if m != preferred_model]
     last_err = None
     for model in candidates:
@@ -26,7 +26,7 @@ def generate_with_fallback(client, contents, preferred_model="gemini-3.8-flash",
                 err_str = str(e)
                 last_err = e
                 if "503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str:
-                    time.sleep(1.0)
+                    time.sleep(0.5)
                     continue
                 if "404" in err_str:
                     break
@@ -358,40 +358,186 @@ def algorithmic_auto_boost(latex_code: str, target_jd: Optional[str] = None) -> 
 
     return boosted, changes
 
-def algorithmic_resume_to_latex(extracted_text: str) -> str:
-    """Algorithmic converter that structures extracted resume text into compilable LaTeX."""
-    lines = [l.strip() for l in extracted_text.split("\n") if l.strip()]
+def escape_latex_special(s: str) -> str:
+    """Escapes special LaTeX characters in text strings."""
+    s = s.replace('&', r'\&').replace('%', r'\%').replace('$', r'\$').replace('#', r'\#').replace('_', r'\_')
+    s = s.replace('—', ' -- ')
+    return s
+
+def algorithmic_resume_to_latex(extracted_text: str) -> Tuple[str, str]:
+    """
+    Deterministic, faithful algorithmic parser that converts raw extracted resume text
+    directly into compilable, ATS-optimized LaTeX with ZERO hallucination or placeholder data.
+    """
+    lines = [l.strip() for l in extracted_text.split('\n') if l.strip()]
     if not lines:
-        return DEFAULT_PRIMARY_RESUME
+        return "", "Candidate"
 
-    name = lines[0] if lines else "Candidate"
-    full_text = "\n".join(lines)
+    # 1. Extract Candidate Name
+    name = lines[0]
+    name = re.sub(r'^(name|candidate|resume)\s*[:\-]\s*', '', name, flags=re.I).strip()
+    if '@' in name or '|' in name:
+        parts = [p.strip() for p in name.split('|')]
+        name = parts[0]
 
-    email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', full_text)
-    email = email_match.group(0) if email_match else "alex@example.com"
+    full_text = '\n'.join(lines)
+    email_m = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', full_text)
+    email = email_m.group(0) if email_m else ''
 
-    phone_match = re.search(r'(\+?\d[\d\s\(\)\-\.]{7,}\d)', full_text)
-    phone = phone_match.group(0) if phone_match else "+1 (555) 000-0000"
+    phone_m = re.search(r'(\+?\d[\d\s\(\)\-\.]{7,}\d)', full_text)
+    phone = phone_m.group(0) if phone_m else ''
 
-    linkedin_match = re.search(r'linkedin\.com/in/([\w\-]+)', full_text, re.IGNORECASE)
-    linkedin = f"linkedin.com/in/{linkedin_match.group(1)}" if linkedin_match else "linkedin.com/in/candidate"
+    linkedin_m = re.search(r'(https?://)?(www\.)?linkedin\.com/in/([\w\-]+)', full_text, re.I)
+    linkedin = f'linkedin.com/in/{linkedin_m.group(3)}' if linkedin_m else ''
 
-    github_match = re.search(r'github\.com/([\w\-]+)', full_text, re.IGNORECASE)
-    github = f"github.com/{github_match.group(1)}" if github_match else "github.com/candidate"
+    github_m = re.search(r'(https?://)?(www\.)?github\.com/([\w\-]+)', full_text, re.I)
+    github = f'github.com/{github_m.group(3)}' if github_m else ''
 
-    # Assemble using standard battle-tested template
-    template = DEFAULT_PRIMARY_RESUME
-    template = re.sub(r'\\textbf\{\\Huge\s+(?:\\scshape\s+)?[^}]+\}', f"\\\\textbf{{\\\\Huge \\\\scshape {name}}}", template)
-    return template
+    contact_parts = []
+    if phone: contact_parts.append(escape_latex_special(phone))
+    if email: contact_parts.append(r'\href{mailto:' + email + r'}{\underline{' + escape_latex_special(email) + r'}}')
+    if linkedin: contact_parts.append(r'\href{https://' + linkedin + r'}{\underline{' + escape_latex_special(linkedin) + r'}}')
+    if github: contact_parts.append(r'\href{https://' + github + r'}{\underline{' + escape_latex_special(github) + r'}}')
+    contact_line = ' $|$ '.join(contact_parts)
+
+    section_keywords = [
+        ('SUMMARY', r'^(professional\s+)?(summary|objective|profile|about\s+me)$'),
+        ('EXPERIENCE', r'^(work\s+|professional\s+)?(experience|employment|work\s+history)$'),
+        ('PROJECTS', r'^(technical\s+|key\s+|personal\s+)?projects$'),
+        ('EDUCATION', r'^(education|academic\s+background|qualifications)$'),
+        ('TECHNICAL SKILLS', r'^(technical\s+|core\s+)?skills|skills\s+(&|and)\s+technologies|technologies$'),
+        ('CERTIFICATIONS', r'^(certifications|licenses|awards|achievements)$'),
+    ]
+
+    sections = []
+    current_sec = None
+    sec_content = []
+
+    for l in lines[1:]:
+        clean_header = re.sub(r'[:\-_#*]+$', '', l).strip().lower()
+        matched = None
+        for sec_name, pat in section_keywords:
+            if re.match(pat, clean_header, re.I):
+                matched = sec_name
+                break
+        if matched:
+            if current_sec:
+                sections.append((current_sec, sec_content))
+            current_sec = matched
+            sec_content = []
+        else:
+            if current_sec:
+                sec_content.append(l)
+
+    if current_sec:
+        sections.append((current_sec, sec_content))
+
+    # Assemble pure LaTeX document
+    tex = [
+        r'\documentclass[letterpaper,10pt]{article}',
+        r'\usepackage{latexsym}',
+        r'\usepackage[empty]{fullpage}',
+        r'\usepackage{titlesec}',
+        r'\usepackage{marvosym}',
+        r'\usepackage[usenames,dvipsnames]{color}',
+        r'\usepackage{verbatim}',
+        r'\usepackage{enumitem}',
+        r'\usepackage[hidelinks]{hyperref}',
+        r'\usepackage{fancyhdr}',
+        r'\usepackage[english]{babel}',
+        r'\usepackage{tabularx}',
+        r'\pagestyle{fancy}',
+        r'\fancyhf{}',
+        r'\renewcommand{\headrulewidth}{0pt}',
+        r'\renewcommand{\footrulewidth}{0pt}',
+        r'\addtolength{\oddsidemargin}{-0.5in}',
+        r'\addtolength{\evensidemargin}{-0.5in}',
+        r'\addtolength{\textwidth}{1in}',
+        r'\addtolength{\topmargin}{-.5in}',
+        r'\addtolength{\textheight}{1.0in}',
+        r'\urlstyle{same}',
+        r'\raggedbottom',
+        r'\raggedright',
+        r'\setlength{\tabcolsep}{0in}',
+        r'\titleformat{\section}{\vspace{-4pt}\scshape\raggedright\large}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]',
+        r'\newcommand{\resumeItem}[1]{\item\small{#1 \vspace{-2pt}}}',
+        r'\newcommand{\resumeSubheading}[4]{\vspace{-2pt}\item\begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}\textbf{#1} & #2 \\\textit{\small#3} & \textit{\small #4} \\\end{tabular*}\vspace{-7pt}}',
+        r'\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.15in, label={}]}',
+        r'\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}',
+        r'\newcommand{\resumeItemListStart}{\begin{itemize}}',
+        r'\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-5pt}}',
+        r'\begin{document}',
+        r'\begin{center}',
+        r'    \textbf{\Huge \scshape ' + escape_latex_special(name) + r'} \\ \vspace{2pt}',
+        r'    \small ' + contact_line,
+        r'\end{center}',
+    ]
+
+    for sec_name, s_lines in sections:
+        tex.append(r'\section{' + escape_latex_special(sec_name) + r'}')
+        if sec_name in ('EXPERIENCE', 'PROJECTS', 'EDUCATION'):
+            tex.append(r'\resumeSubHeadingListStart')
+            in_subheading = False
+            for s_line in s_lines:
+                if s_line.startswith(('-', '•', '*', '+')):
+                    bullet = re.sub(r'^[\-\•\*\+\s]+', '', s_line)
+                    if not in_subheading:
+                        tex.append(r'  \resumeItemListStart')
+                        in_subheading = True
+                    tex.append(r'    \resumeItem{' + escape_latex_special(bullet) + r'}')
+                elif '|' in s_line or ' - ' in s_line or ' -- ' in s_line:
+                    if in_subheading:
+                        tex.append(r'  \resumeItemListEnd')
+                        in_subheading = False
+                    parts = [p.strip() for p in s_line.split('|')]
+                    h1 = parts[0] if len(parts) > 0 else s_line
+                    h2 = parts[1] if len(parts) > 1 else ''
+                    h3 = parts[2] if len(parts) > 2 else ''
+                    h4 = parts[3] if len(parts) > 3 else ''
+                    tex.append(r'  \resumeSubheading{' + escape_latex_special(h1) + r'}{' + escape_latex_special(h2) + r'}{' + escape_latex_special(h3) + r'}{' + escape_latex_special(h4) + r'}')
+                    tex.append(r'  \resumeItemListStart')
+                    in_subheading = True
+                else:
+                    if in_subheading:
+                        tex.append(r'    \resumeItem{' + escape_latex_special(s_line) + r'}')
+                    else:
+                        tex.append(r'  \resumeItemListStart')
+                        in_subheading = True
+                        tex.append(r'    \resumeItem{' + escape_latex_special(s_line) + r'}')
+            if in_subheading:
+                tex.append(r'  \resumeItemListEnd')
+            tex.append(r'\resumeSubHeadingListEnd')
+        elif sec_name == 'TECHNICAL SKILLS':
+            tex.append(r'\begin{itemize}[leftmargin=0.15in, label={}]')
+            tex.append(r'  \small{\item{')
+            skill_items = []
+            for s_line in s_lines:
+                clean = re.sub(r'^[\-\•\*\+\s]+', '', s_line)
+                if ':' in clean:
+                    cat, val = clean.split(':', 1)
+                    skill_items.append(r'    \textbf{' + escape_latex_special(cat.strip()) + r'}{: ' + escape_latex_special(val.strip()) + r'} \\')
+                else:
+                    skill_items.append(r'    ' + escape_latex_special(clean) + r' \\')
+            tex.extend(skill_items)
+            tex.append(r'  }}')
+            tex.append(r'\end{itemize}')
+        else:
+            tex.append(r'\vspace{2pt}')
+            for s_line in s_lines:
+                clean = re.sub(r'^[\-\•\*\+\s]+', '', s_line)
+                tex.append(r'\small{' + escape_latex_special(clean) + r'} \\')
+
+    tex.append(r'\end{document}')
+    return '\n'.join(tex), name
 
 async def convert_resume_to_latex(
     resume_text: str,
     gemini_api_key: Optional[str] = None,
     model_name: Optional[str] = None
 ) -> Tuple[str, str]:
-    """Converts raw extracted resume text into a compilable LaTeX resume."""
+    """Converts raw extracted resume text into a faithful compilable LaTeX resume."""
     client = get_gemini_client(gemini_api_key)
-    active_model = model_name or settings.GEMINI_MODEL or "gemini-3.8-flash"
+    active_model = model_name or settings.GEMINI_MODEL or "gemini-3.5-flash"
 
     if client:
         prompt = f"""You are a World-Class LaTeX Typesetting & Resume Architecture Expert.
@@ -412,7 +558,10 @@ The LaTeX source code MUST use these battle-tested macros:
 - \\newcommand{{\\resumeItemListEnd}}{{\\end{{itemize}}\\vspace{{-5pt}}}}
 
 CRITICAL CONVERSION RULES:
-1. FAITHFUL DATA RETRIEVAL: Accurately transfer candidate's name, email, phone, links, and all their sections (Experience, Education, Projects, Technical Skills, Certifications, Publications, Summary, etc.).
+1. STRICT 100% CANDIDATE REPRODUCTION:
+   - Extract and preserve all of the candidate's actual jobs, employers, bullet points, metrics, skills, institutions, degrees, and dates.
+   - UNDER NO CIRCUMSTANCE invent, hallucinate, or insert placeholder data, fictional companies (such as Acme, Globex), or sample candidate names (such as Alex Rivera, Alex Mercer).
+   - Every single entry must correspond strictly to the provided resume text.
 2. ZERO EM DASHES: NEVER use em dashes ('—'). Always use '--' for date ranges and '-' for hyphens.
 3. ESCAPE SPECIAL CHARACTERS: Properly escape %, &, _, $, # (e.g. 45\\%, C\\#, \\$14,000).
 4. STRICT COMPILABILITY: Ensure the code begins with \\documentclass and ends with \\end{{document}} and compiles cleanly in LaTeX.
@@ -440,7 +589,7 @@ Return a valid JSON object:
         except Exception as e:
             print(f"Gemini resume conversion API error, falling back to algorithmic: {e}")
 
-    # Fallback to algorithmic conversion
-    fallback_latex = algorithmic_resume_to_latex(resume_text)
+    # Fallback to deterministic algorithmic conversion without ANY placeholder data
+    fallback_latex, candidate_name = algorithmic_resume_to_latex(resume_text)
     sanitized, _ = sanitize_latex(fallback_latex)
-    return sanitized, "Candidate"
+    return sanitized, candidate_name

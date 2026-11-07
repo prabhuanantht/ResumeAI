@@ -280,7 +280,7 @@ export async function updateSettings(settings: SettingsModel): Promise<SettingsM
 
 export async function testApiKey(
   apiKey: string,
-  model = "gemini-3.8-flash"
+  model = "gemini-3.5-flash"
 ): Promise<{ valid: boolean; model: string; message: string; response: string }> {
   const res = await fetch(`${API_BASE}/api/settings/test-key`, {
     method: "POST",

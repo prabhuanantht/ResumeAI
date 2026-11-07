@@ -35,7 +35,7 @@ async def generate_tailored_resume(
 
         # 2. Fetch user settings
         system_prompt = req.user_system_prompt
-        gemini_model = "gemini-3.8-flash"
+        gemini_model = "gemini-3.5-flash"
         gemini_key = ""
         forbidden_words = ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
         
@@ -113,7 +113,7 @@ async def chat_edit(
     x_gemini_key: Optional[str] = Header(None)
 ):
     async with get_db_connection() as db:
-        gemini_model = "gemini-3.8-flash"
+        gemini_model = "gemini-3.5-flash"
         gemini_key = ""
         forbidden_words = ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
         async with db.execute("SELECT gemini_model, gemini_api_key, forbidden_words FROM settings WHERE id = 'default_settings'") as cursor:

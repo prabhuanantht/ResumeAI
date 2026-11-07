@@ -82,5 +82,5 @@ class SettingsModel(BaseModel):
     system_prompt: str
     forbidden_words: List[str] = ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
     enforce_no_em_dashes: bool = True
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "gemini-3.5-flash"
     gemini_api_key: str = ""

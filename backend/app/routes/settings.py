@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/settings", tags=["Settings"])
 
 class TestKeyPayload(BaseModel):
     api_key: str
-    model: Optional[str] = "gemini-3.8-flash"
+    model: Optional[str] = "gemini-3.5-flash"
 
 @router.post("/test-key")
 async def test_api_key(payload: TestKeyPayload):
@@ -20,7 +20,7 @@ async def test_api_key(payload: TestKeyPayload):
     if not key:
         raise HTTPException(status_code=400, detail="Please provide a valid Gemini API key.")
 
-    models_to_test = [payload.model or "gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    models_to_test = [payload.model or "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-flash-latest"]
 
     def _test():
         client = genai.Client(api_key=key)
@@ -49,7 +49,7 @@ async def test_api_key(payload: TestKeyPayload):
     except asyncio.TimeoutError:
         return {
             "valid": True,
-            "model": payload.model or "gemini-3.8-flash",
+            "model": payload.model or "gemini-3.5-flash",
             "message": "Key verified and active! (Google free-tier traffic is high; automatic local fallbacks are ready).",
             "response": "CONNECTED"
         }
@@ -60,7 +60,7 @@ async def test_api_key(payload: TestKeyPayload):
         elif "503" in err_msg or "high demand" in err_msg or "UNAVAILABLE" in err_msg:
             return {
                 "valid": True,
-                "model": payload.model or "gemini-3.8-flash",
+                "model": payload.model or "gemini-3.5-flash",
                 "message": "Key verified and active! (Google reported temporary peak traffic; automatic retries and local fallbacks active).",
                 "response": "CONNECTED"
             }
@@ -77,7 +77,7 @@ async def get_settings():
                     system_prompt=default_config.DEFAULT_SYSTEM_PROMPT,
                     forbidden_words=["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"],
                     enforce_no_em_dashes=True,
-                    gemini_model="gemini-3.8-flash",
+                    gemini_model="gemini-3.5-flash",
                     gemini_api_key=default_config.GEMINI_API_KEY
                 )
                 await db.execute("""
@@ -97,7 +97,7 @@ async def get_settings():
                 system_prompt=row[0] or default_config.DEFAULT_SYSTEM_PROMPT,
                 forbidden_words=json.loads(row[1]) if row[1] else ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"],
                 enforce_no_em_dashes=bool(row[2]),
-                gemini_model=row[3] or "gemini-3.8-flash",
+                gemini_model=row[3] or "gemini-3.5-flash",
                 gemini_api_key=row[4] or ""
             )
 

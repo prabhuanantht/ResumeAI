@@ -1,6 +1,7 @@
 import json
 import uuid
 import io
+import re
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Header, UploadFile, File
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from backend.app.config import settings
 from backend.app.database import get_db_connection
 from backend.app.models import Profile, TailorResponse, AtsBreakdown
 from backend.app.services.templates import DEFAULT_PRIMARY_RESUME, CURATED_TEMPLATES
+from backend.app.services.compiler import sanitize_latex
 from backend.app.services.ats_scorer import score_resume_against_job
 from backend.app.services.gemini import auto_boost_latex, convert_resume_to_latex
 
@@ -74,9 +76,31 @@ async def upload_and_convert_resume(
         if not extracted_text.strip():
             raise HTTPException(status_code=400, detail="Could not extract readable text from the uploaded document.")
 
+        # 1. If file is already valid LaTeX (.tex, .latex, or has \documentclass and \begin{document}), preserve it 100%
+        if lower_name.endswith((".tex", ".latex")) or (r"\documentclass" in extracted_text and r"\begin{document}" in extracted_text):
+            sanitized, fixes = sanitize_latex(extracted_text)
+            name_m = (
+                re.search(r"\\textbf\{\\Huge\s*(?:\\scshape\s*)?([^}]+)\}", sanitized) or
+                re.search(r"\\name\{([^}]+)\}", sanitized) or
+                re.search(r"\\author\{([^}]+)\}", sanitized)
+            )
+            cand_name = name_m.group(1).strip() if name_m else (filename.rsplit(".", 1)[0].replace("_", " ").title())
+            breakdown = score_resume_against_job(
+                resume_latex=sanitized,
+                job_description="General Software Engineering, Full Stack, Cloud Architecture",
+                forbidden_words=["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
+            )
+            return UploadResumeResponse(
+                latex_code=sanitized,
+                candidate_name=cand_name,
+                filename=filename,
+                ats_score=breakdown.overall_score,
+                extracted_text_preview=sanitized[:300].strip()
+            )
+
         # Retrieve active settings & API key
         async with get_db_connection() as db:
-            gemini_model = "gemini-3.8-flash"
+            gemini_model = "gemini-3.5-flash"
             gemini_key = ""
             forbidden_words = ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
             async with db.execute("SELECT forbidden_words, gemini_model, gemini_api_key FROM settings WHERE id = 'default_settings'") as cursor:
@@ -136,7 +160,7 @@ async def auto_boost_resume(
     x_gemini_key: Optional[str] = Header(None)
 ):
     async with get_db_connection() as db:
-        gemini_model = "gemini-3.8-flash"
+        gemini_model = "gemini-3.5-flash"
         gemini_key = ""
         forbidden_words = ["spearheaded", "synergized", "leverage", "game-changing", "tapestry", "delve"]
         async with db.execute("SELECT forbidden_words, gemini_model, gemini_api_key FROM settings WHERE id = 'default_settings'") as cursor:
