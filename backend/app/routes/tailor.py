@@ -136,6 +136,7 @@ async def chat_edit(
         updated_latex, explanation, changes = await chat_edit_latex(
             current_latex=req.current_latex,
             instruction=req.instruction,
+            error_log=req.error_log,
             job_description=req.job_description,
             user_system_prompt=req.user_system_prompt,
             gemini_api_key=active_key,

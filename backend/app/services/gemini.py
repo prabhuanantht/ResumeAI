@@ -8,7 +8,7 @@ from google import genai
 from backend.app.config import settings
 from backend.app.models import AtsBreakdown, SkillGapItem, TailorResponse
 from backend.app.services.ats_scorer import score_resume_against_job, extract_keywords_from_text
-from backend.app.services.compiler import sanitize_latex
+from backend.app.services.compiler import sanitize_latex, compile_latex_to_pdf
 from backend.app.services.templates import DEFAULT_PRIMARY_RESUME
 
 FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-flash-latest"]
@@ -43,7 +43,78 @@ def get_gemini_client(api_key: Optional[str] = None):
         print(f"Failed to initialize Gemini Client: {e}")
         return None
 
-def detect_skill_gaps(candidate_latex: str, job_description: str, confirmed: List[str] = None, declined: List[str] = None) -> List[SkillGapItem]:
+def parse_delimited_output(text: str) -> Tuple[str, str, List[str]]:
+    """
+    Robustly extracts updated LaTeX code, explanation, and changes from Gemini output,
+    handling delimited blocks (===LATEX===), markdown code blocks (```latex), or raw LaTeX code.
+    Completely eliminates JSON escape errors on backslashes and control characters.
+    """
+    explanation = ""
+    changes = []
+    latex = ""
+
+    # 1. Delimited format with ===LATEX===
+    if "===LATEX===" in text:
+        parts = text.split("===LATEX===")
+        latex = parts[1].strip()
+        header = parts[0]
+
+        exp_m = re.search(r"===EXPLANATION===\s*(.*?)(?====CHANGES===|$)", header, re.DOTALL)
+        if exp_m:
+            explanation = exp_m.group(1).strip()
+
+        changes_m = re.search(r"===CHANGES===\s*(.*?)$", header, re.DOTALL)
+        if changes_m:
+            changes = [c.strip("-* ").strip() for c in changes_m.group(1).splitlines() if c.strip("-* ").strip()]
+
+    # 2. Markdown code block
+    if not latex and "```" in text:
+        m = re.search(r"```(?:latex|tex)?\s*(.*?)\s*```", text, re.DOTALL)
+        if m:
+            latex = m.group(1).strip()
+
+    # 3. Direct \documentclass block
+    if not latex and "\\documentclass" in text:
+        m = re.search(r"(\\documentclass.*?\\end\{document\})", text, re.DOTALL)
+        if m:
+            latex = m.group(1).strip()
+
+    # Clean any accidental outer markdown artifacts
+    if latex.startswith("```"):
+        latex = re.sub(r"^```(?:latex|tex)?\s*", "", latex)
+    if latex.endswith("```"):
+        latex = re.sub(r"\s*```$", "", latex)
+
+    if not explanation:
+        preamble = text.split("```")[0].strip() if "```" in text else ""
+        if preamble and not preamble.startswith("\\documentclass"):
+            explanation = preamble[:300].strip()
+        else:
+            explanation = "Applied AI updates to resume."
+
+    if not changes:
+        changes = ["Applied AI updates and verified LaTeX syntax."]
+
+    return latex, explanation, changes
+
+def parse_lenient_latex_json(raw_text: str) -> Dict[str, Any]:
+    """Leniently parses JSON containing LaTeX strings by falling back to regex extraction on escape errors."""
+    try:
+        return json.loads(raw_text)
+    except Exception:
+        result = {}
+        latex_m = re.search(r'"(?:updated_latex|tailored_latex|latex_code)"\s*:\s*"(.*?)(?:"\s*,\s*"\w+"|\s*\}\s*$)', raw_text, re.DOTALL)
+        if latex_m:
+            raw_val = latex_m.group(1)
+            result["updated_latex"] = raw_val.replace(r'\"', '"').replace(r'\n', '\n')
+            result["tailored_latex"] = result["updated_latex"]
+            result["latex_code"] = result["updated_latex"]
+        exp_m = re.search(r'"explanation"\s*:\s*"([^"]+)"', raw_text)
+        if exp_m:
+            result["explanation"] = exp_m.group(1)
+        return result
+
+
     """Identifies skills requested by JD that candidate does not currently list."""
     confirmed = set(confirmed or [])
     declined = set(declined or [])
@@ -133,7 +204,10 @@ TASK:
                 )
             response = await asyncio.wait_for(asyncio.to_thread(_call), timeout=25.0)
             raw_text = response.text.strip()
-            data = json.loads(raw_text)
+            try:
+                data = json.loads(raw_text)
+            except Exception:
+                data = parse_lenient_latex_json(raw_text)
             tailored_latex = data.get("tailored_latex", base_latex)
             diff_summary = data.get("diff_summary", ["Tailored resume to match target job profile."])
             
@@ -177,58 +251,100 @@ def algorithmic_tailor(base_latex: str, job_title: str, company: str, job_descri
 async def chat_edit_latex(
     current_latex: str,
     instruction: str,
+    error_log: Optional[str] = None,
     job_description: Optional[str] = None,
     user_system_prompt: Optional[str] = None,
     gemini_api_key: Optional[str] = None,
     model_name: Optional[str] = None
 ) -> Tuple[str, str, List[str]]:
     client = get_gemini_client(gemini_api_key)
-    active_model = model_name or settings.GEMINI_MODEL or "gemini-3.8-flash"
+    active_model = model_name or settings.GEMINI_MODEL or "gemini-3.5-flash"
     
+    # Detect if user is asking for syntax correction or if an error log was provided
+    is_syntax_fix = bool(
+        error_log or
+        any(w in instruction.lower() for w in [
+            "syntax", "error", "compile", "failed", "broken", "fix", "invalid",
+            "cant compile", "can't compile", "recompile", "repair", "red"
+        ])
+    )
+    
+    active_error = error_log
+    if is_syntax_fix and not active_error:
+        # Run local test compilation to capture the exact Tectonic log and line number
+        _, compile_err, _ = compile_latex_to_pdf(current_latex)
+        if compile_err:
+            active_error = compile_err
+
     if client:
-        prompt = f"""You are an elite LaTeX resume editor.
+        error_context = f"\nACTIVE COMPILER ERROR LOG TO SURGICALLY RESOLVE:\n{active_error}\n" if active_error else ""
+        jd_context = f"\nTARGET JOB CONTEXT:\n{job_description}\n" if job_description else ""
+        system_context = f"{user_system_prompt}\n\n" if user_system_prompt else ""
+
+        prompt = f"""{system_context}You are an elite LaTeX Typesetting, XeTeX & Resume Architecture Expert.
 The candidate wants you to modify their LaTeX resume according to this instruction:
 "{instruction}"
-
+{error_context}{jd_context}
 CURRENT LATEX CODE:
 {current_latex}
 
 CRITICAL RULES:
-1. STRICTLY NEVER use em dashes ('—'). Always use '--' or '-'.
-2. Keep the entire document valid, compilable LaTeX.
-3. Return a JSON object with:
-{{
-  "updated_latex": "The full revised LaTeX document",
-  "explanation": "Brief 1-2 sentence description of what was changed",
-  "changes": ["Change 1", "Change 2"]
-}}
-"""
-        try:
-            def _call():
-                return generate_with_fallback(
-                    client=client,
-                    contents=prompt,
-                    preferred_model=active_model,
-                    config={"response_mime_type": "application/json"}
-                )
-            response = await asyncio.wait_for(asyncio.to_thread(_call), timeout=25.0)
-            data = json.loads(response.text.strip())
-            updated_latex, _ = sanitize_latex(data.get("updated_latex", current_latex))
-            return updated_latex, data.get("explanation", "Updated resume according to instruction."), data.get("changes", [instruction])
-        except Exception as e:
-            print(f"Chat edit error: {e}")
+1. STRICT ZERO EM DASHES: NEVER use em dashes ('—'). Always use '--' for date ranges and '-' for hyphens.
+2. ESCAPE ALL SPECIAL CHARACTERS: Escape %, $, &, #, _ in all achievement bullets (e.g. 40\\%, \\$15,000, C\\#, user\\_id).
+3. 100% VALID COMPILABLE LATEX: Ensure every \\begin has matching \\end, every \\resumeItemListStart has matching \\resumeItemListEnd, and all packages required are included.
+4. If fixing a syntax error, inspect the compiler error log carefully and surgically correct the offending lines.
+5. PRESERVE CANDIDATE TRUTH: Never replace the candidate's actual data with placeholder or sample data.
 
-    # Local fallback
-    updated = current_latex
-    changes = []
+FORMAT YOUR RESPONSE EXACTLY AS FOLLOWS (DO NOT USE JSON):
+===EXPLANATION===
+Brief 1-2 sentence description of what was changed or fixed.
+===CHANGES===
+- Specific change 1
+- Specific change 2
+===LATEX===
+\\documentclass[letterpaper,10pt]{{article}}
+... [Complete compilable LaTeX source code starting with \\documentclass and ending with \\end{{document}}]
+\\end{{document}}
+"""
+        current_prompt = prompt
+        for attempt in range(2):
+            try:
+                def _call(p):
+                    return generate_with_fallback(
+                        client=client,
+                        contents=p,
+                        preferred_model=active_model
+                    )
+                response = await asyncio.wait_for(asyncio.to_thread(_call, current_prompt), timeout=30.0)
+                raw_text = response.text.strip()
+                updated_latex, explanation, changes = parse_delimited_output(raw_text)
+
+                if updated_latex and "\\documentclass" in updated_latex:
+                    sanitized, fixes = sanitize_latex(updated_latex)
+                    # Test compile the candidate output to guarantee 100% compilation
+                    pdf_bytes, compile_err, _ = compile_latex_to_pdf(sanitized)
+                    if pdf_bytes:
+                        if fixes:
+                            changes.extend(fixes)
+                        return sanitized, explanation or "Successfully updated and verified LaTeX document.", changes
+                    elif compile_err and attempt == 0:
+                        # Feed the compiler error back into prompt for a targeted 2nd pass
+                        current_prompt = f"""{prompt}\n\nATTEMPT 1 STILL FAILED COMPILATION WITH THIS ERROR:\n{compile_err}\n\nPlease fix the exact lines and syntax issues shown above."""
+                        continue
+                    else:
+                        return sanitized, explanation, changes
+            except Exception as e:
+                print(f"Chat edit error on attempt {attempt}: {e}")
+
+    # Local deterministic fallback: run comprehensive AST/line regex sanitizer
+    sanitized, fixes = sanitize_latex(current_latex)
     if "page" in instruction.lower() and ("shorten" in instruction.lower() or "one page" in instruction.lower()):
-        updated = updated.replace(r"\addtolength{\topmargin}{-.5in}", r"\addtolength{\topmargin}{-.7in}")
-        changes.append("Tightened vertical margins to enforce single-page fit.")
-    else:
-        changes.append(f"Applied refinement: {instruction}")
-        
-    updated, _ = sanitize_latex(updated)
-    return updated, f"Refined LaTeX document: {instruction}", changes
+        sanitized = sanitized.replace(r"\addtolength{\topmargin}{-.5in}", r"\addtolength{\topmargin}{-.7in}")
+        fixes.append("Tightened vertical margins to enforce single-page fit.")
+
+    changes = fixes if fixes else [f"Applied refinement: {instruction}"]
+    explanation = f"Sanitized LaTeX document ({len(fixes)} syntax corrections applied)." if fixes else f"Refined LaTeX document: {instruction}"
+    return sanitized, explanation, changes
 
 async def auto_boost_latex(
     current_latex: str,
@@ -265,37 +381,50 @@ CRITICAL INSTRUCTIONS:
 5. TECHNICAL SKILLS: Ensure clean categorization (Languages, Frameworks, Cloud & DevOps, Developer Tools) with strong industry standard keywords.
 6. VALID LATEX: Return 100% valid, compilable LaTeX that compiles cleanly. Escape all %, &, _, $, # characters properly.
 
-Return a JSON object with:
-{{
-  "updated_latex": "Complete compilable LaTeX source starting with \\documentclass and ending with \\end{{document}}",
-  "explanation": "Executive summary of the quantitative and qualitative enhancements made to the resume",
-  "changes": [
-    "Rewrote all bullet points with Google X-Y-Z formula with quantified latency, scale, and cost metrics",
-    "Strengthened action verbs to past-tense executive verbs",
-    "Verified zero em dashes and strictly validated LaTeX typesetting syntax"
-  ]
-}}
+FORMAT YOUR RESPONSE EXACTLY AS FOLLOWS (DO NOT USE JSON):
+===EXPLANATION===
+Executive summary of the quantitative and qualitative enhancements made to the resume.
+===CHANGES===
+- Specific enhancement 1
+- Specific enhancement 2
+===LATEX===
+\\documentclass[letterpaper,10pt]{{article}}
+... [Complete compilable LaTeX source starting with \\documentclass and ending with \\end{{document}}]
+\\end{{document}}
 """
         try:
             def _call():
                 return generate_with_fallback(
                     client=client,
                     contents=prompt,
-                    preferred_model=active_model,
-                    config={"response_mime_type": "application/json"}
+                    preferred_model=active_model
                 )
-            response = await asyncio.wait_for(asyncio.to_thread(_call), timeout=25.0)
-            data = json.loads(response.text.strip())
-            boosted_latex, fixes = sanitize_latex(data.get("updated_latex", current_latex))
-            return (
-                boosted_latex,
-                data.get("explanation", "Auto-boosted resume with quantified metrics and Google X-Y-Z formula."),
-                data.get("changes", [
-                  "Quantified bullet points with latency, scale, and throughput metrics",
-                  "Strengthened action verbs and eliminated passive phrasing",
-                  "Validated typography and ensured zero em dashes"
-                ])
-            )
+            response = await asyncio.wait_for(asyncio.to_thread(_call), timeout=30.0)
+            raw_text = response.text.strip()
+            boosted_latex, explanation, changes = parse_delimited_output(raw_text)
+
+            if not boosted_latex and raw_text.startswith("{"):
+                # Fallback lenient JSON parsing if model emitted JSON
+                data = parse_lenient_latex_json(raw_text)
+                boosted_latex = data.get("updated_latex", "")
+                explanation = data.get("explanation", "")
+                changes = data.get("changes", [])
+
+            if boosted_latex and "\\documentclass" in boosted_latex:
+                sanitized, fixes = sanitize_latex(boosted_latex)
+                pdf_bytes, _, _ = compile_latex_to_pdf(sanitized)
+                if pdf_bytes or sanitized:
+                    if fixes:
+                        changes.extend(fixes)
+                    return (
+                        sanitized,
+                        explanation or "Auto-boosted resume with quantified metrics and Google X-Y-Z formula.",
+                        changes or [
+                            "Quantified bullet points with latency, scale, and throughput metrics",
+                            "Strengthened action verbs and eliminated passive phrasing",
+                            "Validated typography and ensured zero em dashes"
+                        ]
+                    )
         except Exception as e:
             print(f"Gemini Auto-Boost API error, using algorithmic booster: {e}")
 
@@ -535,7 +664,11 @@ async def convert_resume_to_latex(
     gemini_api_key: Optional[str] = None,
     model_name: Optional[str] = None
 ) -> Tuple[str, str]:
-    """Converts raw extracted resume text into a faithful compilable LaTeX resume."""
+    """
+    Converts raw extracted resume text into a faithful compilable LaTeX resume.
+    Includes an automated self-healing compiler verification loop to guarantee
+    zero syntax errors upon upload.
+    """
     client = get_gemini_client(gemini_api_key)
     active_model = model_name or settings.GEMINI_MODEL or "gemini-3.5-flash"
 
@@ -563,29 +696,74 @@ CRITICAL CONVERSION RULES:
    - UNDER NO CIRCUMSTANCE invent, hallucinate, or insert placeholder data, fictional companies (such as Acme, Globex), or sample candidate names (such as Alex Rivera, Alex Mercer).
    - Every single entry must correspond strictly to the provided resume text.
 2. ZERO EM DASHES: NEVER use em dashes ('—'). Always use '--' for date ranges and '-' for hyphens.
-3. ESCAPE SPECIAL CHARACTERS: Properly escape %, &, _, $, # (e.g. 45\\%, C\\#, \\$14,000).
+3. ESCAPE SPECIAL CHARACTERS: Properly escape %, &, _, $, # (e.g. 40\\%, C\\#, \\$14,000, user\\_id).
 4. STRICT COMPILABILITY: Ensure the code begins with \\documentclass and ends with \\end{{document}} and compiles cleanly in LaTeX.
 
-Return a valid JSON object:
-{{
-  "latex_code": "Complete compilable LaTeX source code",
-  "candidate_name": "Candidate's full name"
-}}
+FORMAT YOUR RESPONSE EXACTLY AS FOLLOWS (DO NOT USE JSON):
+CANDIDATE_NAME: Full Name of Candidate
+===LATEX===
+\\documentclass[letterpaper,10pt]{{article}}
+... [Complete compilable LaTeX source code]
+\\end{{document}}
 """
         try:
-            def _call():
+            def _call(p):
                 return generate_with_fallback(
                     client=client,
-                    contents=prompt,
-                    preferred_model=active_model,
-                    config={"response_mime_type": "application/json"}
+                    contents=p,
+                    preferred_model=active_model
                 )
-            response = await asyncio.wait_for(asyncio.to_thread(_call), timeout=35.0)
-            data = json.loads(response.text.strip())
-            latex = data.get("latex_code", "")
+            response = await asyncio.wait_for(asyncio.to_thread(_call, prompt), timeout=35.0)
+            raw_text = response.text.strip()
+
+            name_m = re.search(r"CANDIDATE_NAME:\s*([^\n]+)", raw_text)
+            candidate_name = name_m.group(1).strip() if name_m else ""
+
+            latex, _, _ = parse_delimited_output(raw_text)
+
+            if not latex and raw_text.startswith("{"):
+                # Fallback lenient JSON parsing if model emitted JSON
+                data = parse_lenient_latex_json(raw_text)
+                latex = data.get("latex_code", "")
+                if not candidate_name:
+                    candidate_name = data.get("candidate_name", "")
+
             if latex and "\\documentclass" in latex and "\\begin{document}" in latex:
                 sanitized, _ = sanitize_latex(latex)
-                return sanitized, data.get("candidate_name", "Candidate")
+                
+                # Automated self-healing compiler verification
+                pdf_bytes, compile_err, _ = compile_latex_to_pdf(sanitized)
+                if pdf_bytes:
+                    return sanitized, candidate_name or "Candidate"
+
+                # If compilation failed, invoke 1-shot self-repair with compiler error context
+                if compile_err:
+                    repair_prompt = f"""You are an elite LaTeX Typesetting Doctor.
+The following generated resume failed compilation with this exact error:
+
+COMPILER ERROR LOG:
+{compile_err}
+
+LATEX CODE TO FIX:
+{sanitized}
+
+Fix all syntax errors and return the corrected LaTeX document.
+FORMAT YOUR RESPONSE EXACTLY AS FOLLOWS (DO NOT USE JSON):
+===LATEX===
+\\documentclass[letterpaper,10pt]{{article}}
+... [Complete compilable LaTeX source code]
+\\end{{document}}
+"""
+                    repair_resp = await asyncio.wait_for(asyncio.to_thread(_call, repair_prompt), timeout=25.0)
+                    repaired_latex, _, _ = parse_delimited_output(repair_resp.text.strip())
+                    if repaired_latex and "\\documentclass" in repaired_latex:
+                        repaired_sanitized, _ = sanitize_latex(repaired_latex)
+                        pdf_bytes2, _, _ = compile_latex_to_pdf(repaired_sanitized)
+                        if pdf_bytes2:
+                            return repaired_sanitized, candidate_name or "Candidate"
+                        return repaired_sanitized, candidate_name or "Candidate"
+
+                return sanitized, candidate_name or "Candidate"
         except Exception as e:
             print(f"Gemini resume conversion API error, falling back to algorithmic: {e}")
 

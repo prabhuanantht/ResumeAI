@@ -12,7 +12,8 @@ import {
   Scaling,
   ChevronDown,
   Code2,
-  Columns
+  Columns,
+  Sparkles
 } from "lucide-react";
 import { downloadBlob, downloadText, findLineByText } from "@/lib/latex-utils";
 import { compileDocx } from "@/lib/api";
@@ -33,6 +34,7 @@ interface PdfViewerProps {
   onOpenScore?: () => void;
   atsScore?: number | null;
   onNavigateToLine?: (lineNumber: number, label: string) => void;
+  onAutoFixError?: (errorLog: string) => void;
   viewMode?: "split" | "editor" | "preview";
   onViewModeChange?: (mode: "split" | "editor" | "preview") => void;
 }
@@ -46,6 +48,7 @@ export default function PdfViewer({
   onOpenScore,
   atsScore,
   onNavigateToLine,
+  onAutoFixError,
   viewMode,
   onViewModeChange,
 }: PdfViewerProps) {
@@ -539,12 +542,23 @@ export default function PdfViewer({
             <pre className="mt-3 max-h-40 overflow-auto rounded bg-zinc-950/80 p-3 text-left font-mono text-[11px] text-rose-200/90">
               {errorLog}
             </pre>
-            <button
-              onClick={onRetry}
-              className="mt-4 rounded-md bg-rose-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-400 transition-colors"
-            >
-              Try Recompiling
-            </button>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+              {onAutoFixError && (
+                <button
+                  onClick={() => onAutoFixError(errorLog)}
+                  className="flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-3.5 py-1.5 text-xs font-bold text-zinc-950 transition-all shadow-md active:scale-95"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>✨ Auto-Fix with AI Copilot</span>
+                </button>
+              )}
+              <button
+                onClick={onRetry}
+                className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-700 hover:text-white transition-colors border border-zinc-700"
+              >
+                Try Recompiling
+              </button>
+            </div>
           </div>
         )}
 

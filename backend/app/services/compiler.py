@@ -9,29 +9,170 @@ from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 def sanitize_latex(latex_code: str) -> Tuple[str, List[str]]:
-    """
+    r"""
     Sanitize LaTeX code:
+    - Strip markdown fences (```latex ... ```)
+    - Trim preamble/postscript text around \documentclass and \end{document}
     - Strictly eliminate em dashes ('—') and replace with standard LaTeX en dash '--'
-    - Sanitize commonly broken unescaped characters in text
+    - Sanitize Unicode quotes and apostrophes
+    - Escape unescaped %, &, #, $, _ in text lines
+    - Auto-wrap bare bullet items in \resumeItem{...}
+    - Balance unclosed \resumeItemListStart and \resumeSubHeadingListStart
+    - Eliminate illegal empty nesting between \resumeSubHeadingListStart and \resumeItemListStart
     - Return sanitized code and list of fixes made
     """
     fixes = []
-    
-    # 1. Em dash check
-    if "—" in latex_code:
-        em_dash_count = latex_code.count("—")
-        latex_code = latex_code.replace("—", " -- ")
+    if not latex_code:
+        return "", fixes
+
+    cleaned = latex_code.strip()
+
+    # 1. Strip markdown fences if present
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:latex|tex)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        fixes.append("Stripped outer markdown code block delimiters.")
+
+    # 2. Extract strictly from \documentclass to \end{document} if surrounded by markdown commentary
+    if "\\documentclass" in cleaned:
+        doc_start = cleaned.find("\\documentclass")
+        if doc_start > 0:
+            cleaned = cleaned[doc_start:]
+            fixes.append("Removed preamble commentary before \\documentclass.")
+            
+    if "\\end{document}" in cleaned:
+        doc_end = cleaned.rfind("\\end{document}") + len("\\end{document}")
+        if doc_end < len(cleaned):
+            cleaned = cleaned[:doc_end]
+            fixes.append("Removed postscript commentary after \\end{document}.")
+
+    # 3. Em dash check
+    if "—" in cleaned:
+        em_dash_count = cleaned.count("—")
+        cleaned = cleaned.replace("—", " -- ")
         fixes.append(f"Replaced {em_dash_count} em dash(es) ('—') with standard LaTeX en dash ('--').")
-        
-    # 2. Check for typical unicode quotes
-    if "“" in latex_code or "”" in latex_code:
-        latex_code = latex_code.replace("“", "``").replace("”", "''")
+
+    # 4. Smart quotes / curly quotes
+    if "“" in cleaned or "”" in cleaned:
+        cleaned = cleaned.replace("“", "``").replace("”", "''")
         fixes.append("Converted smart double quotes to LaTeX quotes (`` ... '').")
-    if "’" in latex_code or "‘" in latex_code:
-        latex_code = latex_code.replace("’", "'").replace("‘", "`")
+    if "’" in cleaned or "‘" in cleaned:
+        cleaned = cleaned.replace("’", "'").replace("‘", "`")
         fixes.append("Converted smart single quotes/apostrophes to ASCII quotes.")
 
-    return latex_code, fixes
+    # Separate preamble from document body so macro definitions aren't altered by line sanitization
+    if "\\begin{document}" in cleaned:
+        preamble, body = cleaned.split("\\begin{document}", 1)
+        in_body = True
+    else:
+        preamble = ""
+        body = cleaned
+        in_body = False
+
+    lines = body.splitlines()
+    sanitized_lines = []
+    in_tabular = False
+    
+    for line in lines:
+        stripped = line.strip()
+        
+        # Track tabular environments where raw '&' is the column separator
+        if "\\begin{tabular" in stripped:
+            in_tabular = True
+            sanitized_lines.append(line)
+            continue
+        if "\\end{tabular" in stripped:
+            in_tabular = False
+            sanitized_lines.append(line)
+            continue
+            
+        # If line is a comment, don't modify escapes inside it
+        if stripped.startswith("%"):
+            sanitized_lines.append(line)
+            continue
+
+        mod_line = line
+
+        # 5. Escape unescaped % (unescaped % comments out the line and destroys closing braces)
+        if "%" in mod_line:
+            new_line = re.sub(r"(?<!\\)%", r"\%", mod_line)
+            if new_line != mod_line:
+                fixes.append("Escaped unescaped '%' character.")
+                mod_line = new_line
+
+        # 6. Escape unescaped & (when not inside tabular environment)
+        if not in_tabular and "&" in mod_line:
+            new_line = re.sub(r"(?<!\\)&", r"\&", mod_line)
+            if new_line != mod_line:
+                fixes.append("Escaped unescaped '&' character outside tabular environment.")
+                mod_line = new_line
+
+        # 7. Escape unescaped # (e.g. C# -> C\#, #1 -> \#1)
+        if "#" in mod_line:
+            if not ("\\newcommand" in mod_line or "\\def" in mod_line):
+                new_line = re.sub(r"(?<!\\)#", r"\#", mod_line)
+                if new_line != mod_line:
+                    fixes.append("Escaped unescaped '#' character.")
+                    mod_line = new_line
+
+        # 8. Escape unescaped single $ (e.g. $50,000 -> \$50,000)
+        if "$" in mod_line:
+            new_line = re.sub(r"(?<!\\)\$(\d)", r"\\$\1", mod_line)
+            unescaped_dollars = len(re.findall(r"(?<!\\)\$", new_line))
+            if unescaped_dollars % 2 != 0:
+                new_line = re.sub(r"(?<!\\)\$", r"\\$", new_line)
+                fixes.append("Escaped unmatched '$' currency symbol.")
+            elif new_line != mod_line:
+                fixes.append("Escaped '$' currency symbol.")
+            mod_line = new_line
+
+        # 9. Escape unescaped _ in normal text
+        if "_" in mod_line and "\\href" not in mod_line and "\\url" not in mod_line:
+            new_line = re.sub(r"(?<!\\)_", r"\_", mod_line)
+            if new_line != mod_line:
+                fixes.append("Escaped unescaped '_' underscore.")
+                mod_line = new_line
+
+        # 10. Auto-wrap bare bullet items inside body if missing \resumeItem or \item
+        if mod_line.strip().startswith(("- ", "• ", "* ")) and not mod_line.strip().startswith(("\\item", "\\resumeItem")):
+            content = re.sub(r"^[-•*]\s*", "", mod_line.strip())
+            mod_line = f"    \\resumeItem{{{content}}}"
+            fixes.append("Wrapped bare bullet item in \\resumeItem{...}.")
+
+        sanitized_lines.append(mod_line)
+
+    body = "\n".join(sanitized_lines)
+
+    # 11. Fix invalid empty nesting where \resumeSubHeadingListStart is followed immediately by \resumeItemListStart
+    empty_nesting_pattern = r"\\resumeSubHeadingListStart(\s*)\\resumeItemListStart"
+    if re.search(empty_nesting_pattern, body):
+        body = re.sub(empty_nesting_pattern, r"\1\\resumeItemListStart", body)
+        body = re.sub(r"(\\resumeItemListEnd\s*)\\resumeSubHeadingListEnd", r"\1", body)
+        fixes.append("Normalized direct nested itemize lists.")
+
+    # 12. Environment balancing in body
+    item_start_count = body.count(r"\resumeItemListStart")
+    item_end_count = body.count(r"\resumeItemListEnd")
+    if item_start_count > item_end_count:
+        diff = item_start_count - item_end_count
+        if r"\resumeSubHeadingListEnd" in body:
+            body = re.sub(r"(\\resumeSubHeadingListEnd)", r"\\resumeItemListEnd\n\1", body, count=diff)
+            fixes.append(f"Balanced {diff} unclosed \\resumeItemListStart environment(s).")
+
+    sub_start_count = body.count(r"\resumeSubHeadingListStart")
+    sub_end_count = body.count(r"\resumeSubHeadingListEnd")
+    if sub_start_count > sub_end_count:
+        diff = sub_start_count - sub_end_count
+        if r"\end{document}" in body:
+            body = re.sub(r"(\\end\{document\})", r"\\resumeSubHeadingListEnd\n\1", body, count=diff)
+            fixes.append(f"Balanced {diff} unclosed \\resumeSubHeadingListStart environment(s).")
+
+    if in_body:
+        cleaned = preamble + "\\begin{document}" + body
+    else:
+        cleaned = body
+
+    return cleaned, list(set(fixes))
 
 def parse_tectonic_errors(output: str) -> List[Dict[str, str]]:
     """Parse Tectonic/LaTeX output to extract line numbers and error descriptions."""

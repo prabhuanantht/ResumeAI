@@ -17,7 +17,8 @@ import {
   User, 
   Zap,
   ShieldCheck,
-  Award
+  Award,
+  AlertTriangle
 } from "lucide-react";
 import { chatEditResume, AtsBreakdown } from "@/lib/api";
 
@@ -45,6 +46,8 @@ interface AiAssistantProps {
   onClose: () => void;
   onExecuteAutoBoost?: () => void;
   isBoosting?: boolean;
+  errorLog?: string | null;
+  autoFixSignal?: number;
 }
 
 const QUICK_ACTIONS = [
@@ -64,15 +67,26 @@ export default function AiAssistant({
   onClose,
   onExecuteAutoBoost,
   isBoosting = false,
+  errorLog = null,
+  autoFixSignal = 0,
 }: AiAssistantProps) {
   const [prompt, setPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [history, setHistory] = useState<ChatEditItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastSignalRef = useRef<number>(0);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [history, isLoading]);
+
+  // If autoFixSignal triggers while drawer is open or opens, run auto-fix
+  useEffect(() => {
+    if (autoFixSignal && autoFixSignal > lastSignalRef.current && errorLog) {
+      lastSignalRef.current = autoFixSignal;
+      handleSubmit("Fix all LaTeX syntax and compilation errors so this document renders cleanly");
+    }
+  }, [autoFixSignal, errorLog]);
 
   if (!isOpen) return null;
 
@@ -84,9 +98,19 @@ export default function AiAssistant({
       setIsLoading(true);
       const latexBeforeSnapshot = currentLatex;
 
+      const isSyntaxFix = Boolean(
+        errorLog ||
+        text.toLowerCase().includes("syntax") ||
+        text.toLowerCase().includes("error") ||
+        text.toLowerCase().includes("compile") ||
+        text.toLowerCase().includes("fail") ||
+        text.toLowerCase().includes("fix")
+      );
+
       const res = await chatEditResume({
         current_latex: currentLatex,
         instruction: text,
+        error_log: isSyntaxFix ? (errorLog || undefined) : undefined,
         job_description: targetJd,
       });
 
@@ -191,6 +215,36 @@ export default function AiAssistant({
                 <>
                   <Zap className="h-3.5 w-3.5 fill-current" />
                   <span>Auto-Boost Resume Now</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Active Compilation Error Card */}
+        {errorLog && (
+          <div className="rounded-xl border border-rose-500/40 bg-gradient-to-br from-rose-950/50 via-zinc-900 to-rose-950/20 p-3 space-y-2.5 shadow-lg animate-in fade-in">
+            <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
+              <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
+              <span>Active LaTeX Compilation Error</span>
+            </div>
+            <div className="max-h-24 overflow-y-auto rounded bg-zinc-950/90 p-2 font-mono text-[10px] text-rose-200/90 border border-rose-900/40">
+              {errorLog}
+            </div>
+            <button
+              onClick={() => handleSubmit("Fix all LaTeX syntax and compilation errors so this document renders cleanly")}
+              disabled={isLoading}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-bold py-2 text-xs transition-all shadow-md active:scale-[0.98] disabled:opacity-50"
+            >
+              {isLoading ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  <span>Repairing Syntax with AI...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>✨ Auto-Fix LaTeX Syntax Now</span>
                 </>
               )}
             </button>

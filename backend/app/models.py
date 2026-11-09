@@ -61,6 +61,7 @@ class TailorResponse(BaseModel):
 class ChatEditRequest(BaseModel):
     current_latex: str
     instruction: str
+    error_log: Optional[str] = None
     job_description: Optional[str] = None
     user_system_prompt: Optional[str] = None
     gemini_api_key: Optional[str] = None

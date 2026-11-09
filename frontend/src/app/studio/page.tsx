@@ -63,6 +63,7 @@ export default function StudioPage() {
   const [errorLog, setErrorLog] = useState<string | null>(null);
   const [errors, setErrors] = useState<Array<{ line: string | number; message: string }>>([]);
   const [isAiOpen, setIsAiOpen] = useState(false);
+  const [autoFixSignal, setAutoFixSignal] = useState<number>(0);
   const [isScoreOpen, setIsScoreOpen] = useState(false);
   const [liveAtsScore, setLiveAtsScore] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("split");
@@ -242,6 +243,11 @@ export default function StudioPage() {
   const handleUndoAi = (previousCode: string) => {
     setLatexCode(previousCode);
     triggerCompile(previousCode);
+  };
+
+  const handleAutoFixError = (_err?: string) => {
+    setIsAiOpen(true);
+    setAutoFixSignal(Date.now());
   };
 
   // Immediate 1-Click Auto-Boost Execution
@@ -440,6 +446,7 @@ export default function StudioPage() {
               onOpenScore={() => setIsScoreOpen(true)}
               atsScore={liveAtsScore}
               onNavigateToLine={handleNavigateToLine}
+              onAutoFixError={handleAutoFixError}
               viewMode={isMobile ? "preview" : viewMode}
               onViewModeChange={(m) => {
                 if (isMobile) {
@@ -496,7 +503,7 @@ export default function StudioPage() {
           onUndoBoost={handleUndoBoost}
         />
 
-        {/* AI Assistant Drawer with 1-Click Auto-Boost */}
+        {/* AI Assistant Drawer with 1-Click Auto-Boost & Syntax Self-Healing */}
         <AiAssistant
           currentLatex={latexCode}
           onApplyChange={handleApplyAi}
@@ -506,6 +513,8 @@ export default function StudioPage() {
           onClose={() => setIsAiOpen(false)}
           onExecuteAutoBoost={handleExecuteAutoBoost}
           isBoosting={isBoosting}
+          errorLog={errorLog}
+          autoFixSignal={autoFixSignal}
         />
       </main>
 

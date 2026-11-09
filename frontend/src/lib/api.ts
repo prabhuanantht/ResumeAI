@@ -177,6 +177,7 @@ export async function generateTailoredResume(payload: {
 export async function chatEditResume(payload: {
   current_latex: string;
   instruction: string;
+  error_log?: string;
   job_description?: string;
   user_system_prompt?: string;
 }): Promise<{
