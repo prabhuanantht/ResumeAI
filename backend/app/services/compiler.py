@@ -69,6 +69,46 @@ def sanitize_latex(latex_code: str) -> Tuple[str, List[str]]:
         body = cleaned
         in_body = False
 
+    # 5. Preamble Hygiene: Ensure required packages and fallback macros are present
+    if "\\color" in cleaned and "\\usepackage{xcolor}" not in preamble and "\\usepackage[usenames,dvipsnames]{color}" not in preamble:
+        preamble += "\n\\usepackage[usenames,dvipsnames]{color}\n\\usepackage{xcolor}\n"
+        fixes.append("Added missing color/xcolor packages to preamble.")
+
+    if ("\\titleformat" in cleaned or "\\titlerule" in cleaned) and "\\usepackage{titlesec}" not in preamble:
+        preamble += "\n\\usepackage{titlesec}\n"
+        fixes.append("Added missing titlesec package to preamble.")
+
+    if ("\\href" in cleaned or "\\url" in cleaned) and "\\usepackage{hyperref}" not in preamble:
+        preamble += "\n\\usepackage[hidelinks]{hyperref}\n"
+        fixes.append("Added missing hyperref package to preamble.")
+
+    if "[leftmargin=" in cleaned and "\\usepackage{enumitem}" not in preamble:
+        preamble += "\n\\usepackage{enumitem}\n"
+        fixes.append("Added missing enumitem package to preamble.")
+
+    if "tabularx" in cleaned and "\\usepackage{tabularx}" not in preamble:
+        preamble += "\n\\usepackage{tabularx}\n"
+        fixes.append("Added missing tabularx package to preamble.")
+
+    # Strip illegal \hline or \noalign from preamble
+    if "\\hline" in preamble:
+        preamble = re.sub(r"\\hline", "", preamble)
+        fixes.append("Removed illegal \\hline in preamble.")
+    if "\\noalign" in preamble:
+        preamble = re.sub(r"\\noalign\{([^}]*)\}", r"\1", preamble)
+        fixes.append("Removed illegal \\noalign in preamble.")
+
+    # Fallback macros for standard resume environments if used in body
+    macro_preamble = (
+        "\n\\providecommand{\\resumeItem}[1]{\\item\\small{#1 \\vspace{-2pt}}}\n"
+        "\\providecommand{\\resumeSubheading}[4]{\\vspace{-2pt}\\item\\begin{tabular*}{0.97\\textwidth}[t]{l@{\\extracolsep{\\fill}}r}\\textbf{#1} & #2 \\\\\\textit{\\small#3} & \\textit{\\small #4} \\\\\\end{tabular*}\\vspace{-7pt}}\n"
+        "\\providecommand{\\resumeSubHeadingListStart}{\\begin{itemize}[leftmargin=0.15in, label={}]}\n"
+        "\\providecommand{\\resumeSubHeadingListEnd}{\\end{itemize}}\n"
+        "\\providecommand{\\resumeItemListStart}{\\begin{itemize}}\n"
+        "\\providecommand{\\resumeItemListEnd}{\\end{itemize}\\vspace{-5pt}}\n"
+    )
+    preamble += macro_preamble
+
     lines = body.splitlines()
     sanitized_lines = []
     in_tabular = False
@@ -92,6 +132,33 @@ def sanitize_latex(latex_code: str) -> Tuple[str, List[str]]:
             continue
 
         mod_line = line
+
+        # 6. CRITICAL FIX: Eliminate \hline, \cline, and \noalign outside tabular environments
+        if not in_tabular:
+            if "\\hline" in mod_line:
+                prev_line = sanitized_lines[-1].strip() if sanitized_lines else ""
+                if prev_line.startswith("\\section"):
+                    mod_line = re.sub(r"\\hline", "", mod_line)
+                    fixes.append("Removed redundant \\hline directly under \\section.")
+                else:
+                    mod_line = re.sub(r"\\hline", r"\\noindent\\rule{\\textwidth}{0.4pt}", mod_line)
+                    fixes.append("Replaced misplaced \\hline outside tabular with \\rule.")
+
+            if "\\cline" in mod_line:
+                mod_line = re.sub(r"\\cline\{[^}]*\}", r"\\noindent\\rule{\\textwidth}{0.4pt}", mod_line)
+                fixes.append("Replaced misplaced \\cline outside tabular with \\rule.")
+
+            if "\\noalign" in mod_line:
+                mod_line = re.sub(r"\\noalign\{([^}]*)\}", r"\1", mod_line)
+                fixes.append("Unwrapped misplaced \\noalign outside tabular.")
+        else:
+            # Inside tabular: fix misplaced \hline
+            if re.search(r"\\hline\s*\\\\", mod_line):
+                mod_line = re.sub(r"\\hline\s*\\\\", r"\\\\ \hline", mod_line)
+                fixes.append("Moved \\hline after line break in tabular.")
+            if re.search(r"&\s*\\hline", mod_line):
+                mod_line = re.sub(r"&\s*\\hline", r"\\\\ \hline", mod_line)
+                fixes.append("Moved \\hline out of alignment cell in tabular.")
 
         # 5. Escape unescaped % (unescaped % comments out the line and destroys closing braces)
         if "%" in mod_line:
@@ -259,6 +326,16 @@ def compile_latex_to_pdf(latex_code: str) -> Tuple[Optional[bytes], Optional[str
         env["XDG_DATA_HOME"] = "/tmp"
         env["TECTONIC_CACHE_DIR"] = cache_dir
 
+    # Silence Fontconfig missing config warnings in serverless / containerized environments
+    fonts_conf = "/tmp/fonts.conf"
+    if not os.path.exists(fonts_conf):
+        try:
+            with open(fonts_conf, "w") as f:
+                f.write('<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd"><fontconfig><dir>/tmp</dir></fontconfig>')
+        except Exception:
+            pass
+    env["FONTCONFIG_FILE"] = fonts_conf
+
     with tempfile.TemporaryDirectory() as temp_dir:
         tex_path = os.path.join(temp_dir, "resume.tex")
         pdf_path = os.path.join(temp_dir, "resume.pdf")
@@ -275,7 +352,81 @@ def compile_latex_to_pdf(latex_code: str) -> Tuple[Optional[bytes], Optional[str
                 return pdf_bytes, None, fixes
             else:
                 err_log = res.stderr + "\n" + res.stdout
-                return None, err_log or "Compilation failed without output.", fixes
+                
+                # Pass 2: Automated Self-Healing Compiler
+                repaired_code = latex_code
+                repair_fixes = []
+
+                # Self-Healing Case 1: Misplaced \noalign
+                if "Misplaced \\noalign" in err_log or "noalign" in err_log.lower():
+                    lines = repaired_code.splitlines()
+                    repaired_lines = []
+                    in_tab = False
+                    for l in lines:
+                        if r"\begin{tabular" in l:
+                            in_tab = True
+                        elif r"\end{tabular" in l:
+                            in_tab = False
+
+                        if not in_tab:
+                            if r"\hline" in l:
+                                l = re.sub(r"\\hline", r"\\noindent\\rule{\\textwidth}{0.4pt}", l)
+                                repair_fixes.append("Replaced misplaced \\hline outside tabular.")
+                            if r"\cline" in l:
+                                l = re.sub(r"\\cline\{[^}]*\}", r"\\noindent\\rule{\\textwidth}{0.4pt}", l)
+                                repair_fixes.append("Replaced misplaced \\cline outside tabular.")
+                            if r"\noalign" in l:
+                                l = re.sub(r"\\noalign\{([^}]*)\}", r"\1", l)
+                                repair_fixes.append("Unwrapped misplaced \\noalign outside tabular.")
+                        else:
+                            if re.search(r"\\hline\s*\\\\", l):
+                                l = re.sub(r"\\hline\s*\\\\", r"\\\\ \hline", l)
+                                repair_fixes.append("Relocated \\hline after \\\\.")
+                            if re.search(r"&\s*\\hline", l):
+                                l = re.sub(r"&\s*\\hline", r"\\\\ \hline", l)
+                                repair_fixes.append("Relocated \\hline out of cell.")
+                        repaired_lines.append(l)
+                    repaired_code = "\n".join(repaired_lines)
+
+                # Self-Healing Case 2: Undefined control sequence
+                if "Undefined control sequence" in err_log:
+                    if r"\color" in err_log and r"\usepackage{xcolor}" not in repaired_code:
+                        repaired_code = repaired_code.replace(r"\documentclass", "\\documentclass\n\\usepackage[usenames,dvipsnames]{color}\n\\usepackage{xcolor}", 1)
+                        repair_fixes.append("Injected missing xcolor package.")
+                    if r"\resumeItem" in err_log:
+                        macro_def = (
+                            r"\providecommand{\resumeItem}[1]{\item\small{#1 \vspace{-2pt}}}" + "\n"
+                            r"\providecommand{\resumeSubheading}[4]{\vspace{-2pt}\item\begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}\textbf{#1} & #2 \\\textit{\small#3} & \textit{\small #4} \\\end{tabular*}\vspace{-7pt}}" + "\n"
+                        )
+                        repaired_code = repaired_code.replace(r"\begin{document}", macro_def + r"\begin{document}", 1)
+                        repair_fixes.append("Injected fallback \\resumeItem and \\resumeSubheading definitions.")
+
+                # Self-Healing Case 3: Missing $ inserted / Extra }, or forgotten $
+                if "Missing $" in err_log or "forgotten $" in err_log or "math mode" in err_log.lower():
+                    repaired_code = re.sub(r"(?<!\\)%", r"\%", repaired_code)
+                    repaired_code = re.sub(r"(?<!\\)\$(\d)", r"\\$\1", repaired_code)
+                    repaired_code = re.sub(r"(?<!\\)_", r"\_", repaired_code)
+                    repair_fixes.append("Escaped mathematical and currency symbols ($ and %).")
+
+                # If repair heuristics made changes, attempt re-compilation
+                if repair_fixes:
+                    with open(tex_path, "w", encoding="utf-8") as f:
+                        f.write(repaired_code)
+                    res2 = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=45, env=env)
+                    if res2.returncode == 0 and os.path.exists(pdf_path):
+                        with open(pdf_path, "rb") as pf:
+                            pdf_bytes = pf.read()
+                        return pdf_bytes, None, fixes + repair_fixes
+                    else:
+                        err_log = res2.stderr + "\n" + res2.stdout
+
+                # Filter out benign fontconfig warnings from user-facing error message
+                clean_err_lines = [
+                    l for l in err_log.splitlines()
+                    if not l.startswith("Fontconfig error:")
+                ]
+                filtered_err = "\n".join(clean_err_lines).strip()
+                return None, filtered_err or "Compilation failed without output.", fixes
         except subprocess.TimeoutExpired:
             return None, "LaTeX compilation timed out after 45 seconds.", fixes
         except FileNotFoundError:

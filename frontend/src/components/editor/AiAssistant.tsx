@@ -104,7 +104,8 @@ export default function AiAssistant({
         text.toLowerCase().includes("error") ||
         text.toLowerCase().includes("compile") ||
         text.toLowerCase().includes("fail") ||
-        text.toLowerCase().includes("fix")
+        text.toLowerCase().includes("fix") ||
+        text.toLowerCase().includes("noalign")
       );
 
       const res = await chatEditResume({
@@ -113,6 +114,11 @@ export default function AiAssistant({
         error_log: isSyntaxFix ? (errorLog || undefined) : undefined,
         job_description: targetJd,
       });
+
+      // If this was an explicit syntax error repair, automatically apply the clean code to editor
+      if (isSyntaxFix && res.updated_latex) {
+        onApplyChange(res.updated_latex, "Auto-fixed syntax error");
+      }
 
       const newItem: ChatEditItem = {
         id: Date.now().toString(),
@@ -125,7 +131,7 @@ export default function AiAssistant({
         scoreAfter: res.score_after ?? 85,
         breakdownBefore: res.ats_breakdown_before,
         breakdownAfter: res.ats_breakdown_after,
-        status: "pending",
+        status: isSyntaxFix ? "applied" : "pending",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
 
