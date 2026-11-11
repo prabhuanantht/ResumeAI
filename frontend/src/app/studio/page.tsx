@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Navbar from "@/components/navigation/Navbar";
 import LatexEditor from "@/components/editor/LatexEditor";
 import AiAssistant from "@/components/editor/AiAssistant";
+import StudioTailorPanel from "@/components/studio/StudioTailorPanel";
 import ResumeScorerDrawer from "@/components/editor/ResumeScorerDrawer";
 import ApiKeyModal from "@/components/settings/ApiKeyModal";
 import ResumeImportModal from "@/components/upload/ResumeImportModal";
@@ -20,18 +21,21 @@ const PdfViewer = dynamic(() => import("@/components/editor/PdfViewer"), {
     </div>
   ),
 });
+
 import { 
   getProfile, 
   compilePdf, 
   validateLatex, 
   scoreResume,
   autoBoostResume,
+  chatEditResume,
   getStoredApiKey,
   getStoredDraft,
   setStoredDraft,
   getStoredTargetJd,
   Profile 
 } from "@/lib/api";
+
 import { 
   Sparkles, 
   Code2, 
@@ -43,17 +47,15 @@ import {
   RotateCcw,
   Check,
   X,
-  GripVertical,
-  Maximize2,
-  ChevronLeft,
-  ChevronRight,
-  Terminal,
-  ShieldCheck,
-  Cpu
+  Target,
+  Layers,
+  LayoutGrid,
+  Bot
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
-type ViewMode = "split" | "editor" | "preview";
+type LeftPaneTab = "editor" | "copilot" | "tailor";
+type LayoutMode = "split" | "3-panel" | "editor-only" | "preview-only";
 
 export default function StudioPage() {
   const [latexCode, setLatexCode] = useState<string>("");
@@ -66,12 +68,19 @@ export default function StudioPage() {
   const [autoFixSignal, setAutoFixSignal] = useState<number>(0);
   const [isScoreOpen, setIsScoreOpen] = useState(false);
   const [liveAtsScore, setLiveAtsScore] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
+
+  // Left Pane View and Overall Screen Layout
+  const [leftPaneTab, setLeftPaneTab] = useState<LeftPaneTab>("editor");
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("split");
 
   // Mobile Responsiveness State
   const [isMobile, setIsMobile] = useState<boolean>(false);
-  const [mobileTab, setMobileTab] = useState<"editor" | "preview">("editor");
+  const [mobileTab, setMobileTab] = useState<"editor" | "copilot" | "tailor" | "preview">("editor");
+
+  // Auto-heal state for zero first-time failures
+  const [isAutoHealing, setIsAutoHealing] = useState<boolean>(false);
+  const hasAutoHealedRef = useRef<boolean>(false);
 
   useEffect(() => {
     const handleResize = () => {
@@ -129,8 +138,8 @@ export default function StudioPage() {
     return () => clearTimeout(timer);
   }, [latexCode]);
 
-  // Compilation trigger with latency measurement
-  const triggerCompile = useCallback(async (codeToCompile: string) => {
+  // Robust compilation trigger with zero-error silent auto-heal for initial loads
+  const triggerCompile = useCallback(async (codeToCompile: string, isInitialCheck = false) => {
     if (!codeToCompile) return;
     const startTime = performance.now();
     try {
@@ -152,10 +161,37 @@ export default function StudioPage() {
         .catch(() => {});
     } catch (err: any) {
       console.error("Compile error:", err);
-      setErrorLog(err.message || "Compilation failed");
+      const errMsg = err.message || "Compilation failed";
+      setErrorLog(errMsg);
       const validation = await validateLatex(codeToCompile);
       if (!validation.valid && validation.errors) {
         setErrors(validation.errors);
+      }
+
+      // Zero First-Time Failures: Auto-heal silently on first failure!
+      if (isInitialCheck && !hasAutoHealedRef.current) {
+        hasAutoHealedRef.current = true;
+        try {
+          setIsAutoHealing(true);
+          const res = await chatEditResume({
+            current_latex: codeToCompile,
+            instruction: "Fix all LaTeX syntax and compilation errors so this document renders cleanly without errors",
+            error_log: errMsg,
+          });
+          if (res.updated_latex && res.updated_latex !== codeToCompile) {
+            setLatexCode(res.updated_latex);
+            const retryBlob = await compilePdf(res.updated_latex, "Resume");
+            const retryUrl = URL.createObjectURL(retryBlob);
+            setPdfUrl(retryUrl);
+            setErrorLog(null);
+            setErrors([]);
+            setLastSavedTime("Auto-Healed");
+          }
+        } catch (healErr) {
+          console.warn("Silent initial auto-heal attempt failed:", healErr);
+        } finally {
+          setIsAutoHealing(false);
+        }
       }
     } finally {
       setIsCompiling(false);
@@ -169,7 +205,7 @@ export default function StudioPage() {
         const cachedDraft = getStoredDraft();
         if (cachedDraft && cachedDraft.trim().length > 60) {
           setLatexCode(cachedDraft);
-          triggerCompile(cachedDraft);
+          triggerCompile(cachedDraft, true);
           setLastSavedTime("Restored");
           return;
         }
@@ -178,7 +214,7 @@ export default function StudioPage() {
         setActiveProfile(profile);
         const code = profile.primary_latex;
         setLatexCode(code);
-        triggerCompile(code);
+        triggerCompile(code, true);
       } catch (e) {
         console.error("Failed to load initial resume:", e);
       }
@@ -202,7 +238,7 @@ export default function StudioPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [latexCode, triggerCompile]);
 
-  // Draggable Split Divider Logic (Desktop PC First-Class Feature)
+  // Draggable Split Divider Logic
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging || !mainContainerRef.current) return;
@@ -240,13 +276,25 @@ export default function StudioPage() {
     triggerCompile(newCode);
   };
 
+  const handleApplyTailored = (newCode: string, _summary?: string[]) => {
+    setPreviousLatex(latexCode);
+    setLatexCode(newCode);
+    triggerCompile(newCode);
+  };
+
   const handleUndoAi = (previousCode: string) => {
     setLatexCode(previousCode);
     triggerCompile(previousCode);
   };
 
   const handleAutoFixError = (_err?: string) => {
-    setIsAiOpen(true);
+    // Bring Copilot into focus on left so user can see Copilot + Resume
+    if (isMobile) {
+      setMobileTab("copilot");
+    } else {
+      setLeftPaneTab("copilot");
+      if (layoutMode === "preview-only") setLayoutMode("split");
+    }
     setAutoFixSignal(Date.now());
   };
 
@@ -302,8 +350,11 @@ export default function StudioPage() {
     setTargetLabel(label);
     if (isMobile) {
       setMobileTab("editor");
-    } else if (viewMode === "preview") {
-      setViewMode("split");
+    } else {
+      setLeftPaneTab("editor");
+      if (layoutMode === "preview-only") {
+        setLayoutMode("split");
+      }
     }
   };
 
@@ -371,92 +422,355 @@ export default function StudioPage() {
         </div>
       )}
 
-      {/* Main Studio Canvas with Pro Draggable Divider */}
+      {/* Studio Top Control Strip: Screen Combos, Mode Switchers & ATS Meter */}
+      <div className="hidden sm:flex h-11 items-center justify-between border-b border-zinc-800/80 bg-zinc-950/90 px-3 shrink-0 text-xs gap-3">
+        {/* Left Side: Left-Pane Mode Switcher Tabs */}
+        <div className="flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900/70 p-0.5">
+          <button
+            onClick={() => {
+              setLeftPaneTab("editor");
+              if (layoutMode === "preview-only") setLayoutMode("split");
+            }}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-all ${
+              leftPaneTab === "editor"
+                ? "bg-zinc-800 text-white font-semibold shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+            title="LaTeX Code & Visual Text Editor"
+          >
+            <Code2 className="h-3.5 w-3.5 text-emerald-400" />
+            <span>Editor</span>
+          </button>
+          <button
+            onClick={() => {
+              setLeftPaneTab("copilot");
+              if (layoutMode === "preview-only") setLayoutMode("split");
+            }}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-all ${
+              leftPaneTab === "copilot"
+                ? "bg-zinc-800 text-white font-semibold shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+            title="AI Copilot Side-by-Side with Resume"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+            <span>AI Copilot</span>
+          </button>
+          <button
+            onClick={() => {
+              setLeftPaneTab("tailor");
+              if (layoutMode === "preview-only") setLayoutMode("split");
+            }}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-all ${
+              leftPaneTab === "tailor"
+                ? "bg-zinc-800 text-white font-semibold shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+            title="Job Tailoring, ATS Score & Keyword Match"
+          >
+            <Target className="h-3.5 w-3.5 text-teal-400" />
+            <span>Tailor & ATS</span>
+          </button>
+        </div>
+
+        {/* Center: Layout Combos Selector */}
+        <div className="flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900/70 p-0.5">
+          <button
+            onClick={() => setLayoutMode("split")}
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all ${
+              layoutMode === "split"
+                ? "bg-emerald-500 text-zinc-950 font-bold shadow-sm"
+                : "text-zinc-400 hover:text-white"
+            }`}
+            title="2-Panel Split: Active Tab + Live Resume Preview"
+          >
+            <Columns className="h-3.5 w-3.5" />
+            <span>
+              {leftPaneTab === "editor" ? "Editor + Resume" : leftPaneTab === "copilot" ? "Copilot + Resume" : "Tailor + Resume"}
+            </span>
+          </button>
+          <button
+            onClick={() => setLayoutMode("3-panel")}
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all ${
+              layoutMode === "3-panel"
+                ? "bg-emerald-500 text-zinc-950 font-bold shadow-sm"
+                : "text-zinc-400 hover:text-white"
+            }`}
+            title="3-Panel Combo: Editor + Copilot + Live Resume side-by-side"
+          >
+            <Layers className="h-3.5 w-3.5" />
+            <span>3-Panel Combo</span>
+          </button>
+          <button
+            onClick={() => setLayoutMode("editor-only")}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all ${
+              layoutMode === "editor-only"
+                ? "bg-zinc-800 text-white font-semibold shadow-sm"
+                : "text-zinc-400 hover:text-white"
+            }`}
+            title="Full Focus Editor"
+          >
+            <Code2 className="h-3 w-3" />
+            <span>Editor Only</span>
+          </button>
+          <button
+            onClick={() => setLayoutMode("preview-only")}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all ${
+              layoutMode === "preview-only"
+                ? "bg-zinc-800 text-white font-semibold shadow-sm"
+                : "text-zinc-400 hover:text-white"
+            }`}
+            title="Full Focus Resume PDF"
+          >
+            <FileText className="h-3 w-3" />
+            <span>PDF Only</span>
+          </button>
+        </div>
+
+        {/* Right Side: Quick Action Buttons */}
+        <div className="flex items-center gap-2">
+          {liveAtsScore !== null && (
+            <button
+              onClick={() => setIsScoreOpen(true)}
+              className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/90 px-2.5 py-1 text-xs hover:border-emerald-500/40 transition-colors"
+              title="View In-Depth ATS Breakdown"
+            >
+              <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+              <span className="font-mono font-bold text-emerald-400">{liveAtsScore}% ATS</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => handleExecuteAutoBoost()}
+            disabled={isBoosting}
+            className="flex items-center gap-1.5 rounded-md bg-emerald-500/15 border border-emerald-500/40 px-2.5 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 transition-all disabled:opacity-50"
+            title="1-Click Auto-Boost Bullets (⌘B)"
+          >
+            {isBoosting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400" />
+            ) : (
+              <Zap className="h-3.5 w-3.5 fill-current text-emerald-400" />
+            )}
+            <span>Auto-Boost</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Main Studio Canvas with Pro Draggable Divider & Layout Combos */}
       <main
         ref={mainContainerRef}
-        className="relative flex flex-1 overflow-hidden p-1.5 sm:p-2.5 min-h-0 select-text"
+        className="relative flex flex-1 overflow-hidden p-1.5 sm:p-2.5 min-h-0 select-text gap-2"
       >
-        {/* Left Column: Editor (Visual Text or Monaco Code) */}
-        {(!isMobile ? viewMode !== "preview" : mobileTab === "editor") && (
-          <div
-            style={{
-              width: !isMobile && viewMode === "split" ? `${splitRatio}%` : "100%",
-              minWidth: !isMobile && viewMode === "split" ? "260px" : undefined,
-            }}
-            className="h-full min-h-0 transition-[width] duration-75 w-full"
-          >
-            <LatexEditor
-              code={latexCode}
-              onChange={(val) => setLatexCode(val)}
-              onCompile={() => triggerCompile(latexCode)}
-              isCompiling={isCompiling}
-              errors={errors}
-              targetLine={targetLine}
-              targetLabel={targetLabel}
-              viewMode={isMobile ? "editor" : viewMode}
-              onViewModeChange={(m) => {
-                if (isMobile) {
-                  setMobileTab(m === "preview" ? "preview" : "editor");
-                } else {
-                  setViewMode(m);
-                }
-              }}
-              liveAtsScore={liveAtsScore}
-              onOpenScore={() => setIsScoreOpen(true)}
-              onToggleAi={() => setIsAiOpen(!isAiOpen)}
-              isAiOpen={isAiOpen}
-              onOpenImport={() => setImportModalOpen(true)}
-            />
-          </div>
-        )}
+        {/* 3-Panel Combo Mode (Desktop Only) */}
+        {!isMobile && layoutMode === "3-panel" && (
+          <div className="flex h-full w-full gap-2 min-h-0">
+            {/* Panel 1: Code Editor (30%) */}
+            <div className="h-full w-[30%] min-w-[260px] min-h-0">
+              <LatexEditor
+                code={latexCode}
+                onChange={(val) => setLatexCode(val)}
+                onCompile={() => triggerCompile(latexCode)}
+                isCompiling={isCompiling}
+                errors={errors}
+                targetLine={targetLine}
+                targetLabel={targetLabel}
+                viewMode="split"
+                liveAtsScore={liveAtsScore}
+                onOpenScore={() => setIsScoreOpen(true)}
+                onToggleAi={() => setLeftPaneTab((prev) => (prev === "copilot" ? "editor" : "copilot"))}
+                isAiOpen={leftPaneTab === "copilot"}
+                onOpenImport={() => setImportModalOpen(true)}
+              />
+            </div>
 
-        {/* Pro Draggable Split Divider on Desktop PC Only */}
-        {!isMobile && viewMode === "split" && (
-          <div
-            onMouseDown={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
-            onDoubleClick={() => setSplitRatio(50)}
-            title="Drag to resize panels • Double-click to reset 50/50"
-            className="group relative flex w-3 items-center justify-center cursor-col-resize select-none shrink-0 z-20"
-          >
-            {/* Delicate shaped pill handle */}
-            <div className="flex h-10 w-1.5 items-center justify-center rounded-full bg-zinc-800/90 border border-zinc-700/60 shadow-sm group-hover:bg-emerald-400 group-hover:border-emerald-300 group-hover:h-16 group-hover:shadow-[0_0_12px_rgba(52,211,153,0.6)] group-active:bg-emerald-400 group-active:h-16 transition-all duration-200">
-              <div className="h-4 w-0.5 rounded-full bg-zinc-600 group-hover:bg-zinc-950 transition-colors" />
+            {/* Panel 2: Embedded AI Copilot or Tailor (30%) */}
+            <div className="h-full w-[30%] min-w-[280px] min-h-0">
+              {leftPaneTab === "tailor" ? (
+                <StudioTailorPanel
+                  currentLatex={latexCode}
+                  onApplyTailored={handleApplyTailored}
+                  onUndoTailor={() => handleUndoAi(previousLatex || "")}
+                  canUndo={Boolean(previousLatex)}
+                  onSwitchToEditor={() => setLeftPaneTab("editor")}
+                  onSwitchToCopilot={() => setLeftPaneTab("copilot")}
+                />
+              ) : (
+                <AiAssistant
+                  embedded={true}
+                  currentLatex={latexCode}
+                  onApplyChange={handleApplyAi}
+                  onUndoChange={handleUndoAi}
+                  targetJd={targetJd}
+                  onExecuteAutoBoost={handleExecuteAutoBoost}
+                  isBoosting={isBoosting}
+                  errorLog={errorLog}
+                  autoFixSignal={autoFixSignal}
+                  onSwitchToTailor={() => setLeftPaneTab("tailor")}
+                />
+              )}
+            </div>
+
+            {/* Panel 3: Live PDF Preview (40%) */}
+            <div className="h-full flex-1 min-w-[320px] min-h-0">
+              <PdfViewer
+                pdfUrl={pdfUrl}
+                latexCode={latexCode}
+                isCompiling={isCompiling}
+                errorLog={errorLog}
+                onRetry={() => triggerCompile(latexCode)}
+                onOpenScore={() => setIsScoreOpen(true)}
+                atsScore={liveAtsScore}
+                onNavigateToLine={handleNavigateToLine}
+                onAutoFixError={handleAutoFixError}
+                viewMode="split"
+              />
             </div>
           </div>
         )}
 
-        {/* Right Column: PDF Preview Viewport */}
-        {(!isMobile ? viewMode !== "editor" : mobileTab === "preview") && (
-          <div
-            style={{
-              width: !isMobile && viewMode === "split" ? `${100 - splitRatio}%` : "100%",
-              minWidth: !isMobile && viewMode === "split" ? "280px" : undefined,
-            }}
-            className="h-full min-h-0 transition-[width] duration-75 w-full"
-          >
-            <PdfViewer
-              pdfUrl={pdfUrl}
-              latexCode={latexCode}
-              isCompiling={isCompiling}
-              errorLog={errorLog}
-              onRetry={() => triggerCompile(latexCode)}
-              onOpenScore={() => setIsScoreOpen(true)}
-              atsScore={liveAtsScore}
-              onNavigateToLine={handleNavigateToLine}
-              onAutoFixError={handleAutoFixError}
-              viewMode={isMobile ? "preview" : viewMode}
-              onViewModeChange={(m) => {
-                if (isMobile) {
-                  setMobileTab(m === "preview" ? "preview" : "editor");
-                } else {
-                  setViewMode(m);
-                }
-              }}
-            />
-          </div>
+        {/* Standard Split or Single Mode */}
+        {(!isMobile ? layoutMode !== "3-panel" : true) && (
+          <>
+            {/* Left Column: Swappable Tab (Editor / Copilot / Tailor) */}
+            {(!isMobile ? layoutMode !== "preview-only" : mobileTab !== "preview") && (
+              <div
+                style={{
+                  width: !isMobile && layoutMode === "split" ? `${splitRatio}%` : "100%",
+                  minWidth: !isMobile && layoutMode === "split" ? "280px" : undefined,
+                }}
+                className="h-full min-h-0 transition-[width] duration-75 w-full"
+              >
+                {/* When on Mobile, display according to mobileTab */}
+                {isMobile ? (
+                  mobileTab === "editor" ? (
+                    <LatexEditor
+                      code={latexCode}
+                      onChange={(val) => setLatexCode(val)}
+                      onCompile={() => triggerCompile(latexCode)}
+                      isCompiling={isCompiling}
+                      errors={errors}
+                      targetLine={targetLine}
+                      targetLabel={targetLabel}
+                      viewMode="editor"
+                      liveAtsScore={liveAtsScore}
+                      onOpenScore={() => setIsScoreOpen(true)}
+                      onToggleAi={() => setMobileTab("copilot")}
+                      isAiOpen={false}
+                      onOpenImport={() => setImportModalOpen(true)}
+                    />
+                  ) : mobileTab === "copilot" ? (
+                    <AiAssistant
+                      embedded={true}
+                      currentLatex={latexCode}
+                      onApplyChange={handleApplyAi}
+                      onUndoChange={handleUndoAi}
+                      targetJd={targetJd}
+                      onExecuteAutoBoost={handleExecuteAutoBoost}
+                      isBoosting={isBoosting}
+                      errorLog={errorLog}
+                      autoFixSignal={autoFixSignal}
+                      onSwitchToTailor={() => setMobileTab("tailor")}
+                    />
+                  ) : mobileTab === "tailor" ? (
+                    <StudioTailorPanel
+                      currentLatex={latexCode}
+                      onApplyTailored={handleApplyTailored}
+                      onUndoTailor={() => handleUndoAi(previousLatex || "")}
+                      canUndo={Boolean(previousLatex)}
+                      onSwitchToEditor={() => setMobileTab("editor")}
+                      onSwitchToCopilot={() => setMobileTab("copilot")}
+                    />
+                  ) : null
+                ) : (
+                  /* Desktop: display based on leftPaneTab */
+                  leftPaneTab === "editor" ? (
+                    <LatexEditor
+                      code={latexCode}
+                      onChange={(val) => setLatexCode(val)}
+                      onCompile={() => triggerCompile(latexCode)}
+                      isCompiling={isCompiling}
+                      errors={errors}
+                      targetLine={targetLine}
+                      targetLabel={targetLabel}
+                      viewMode={layoutMode === "editor-only" ? "editor" : "split"}
+                      onViewModeChange={(m) => setLayoutMode(m === "preview" ? "preview-only" : m === "editor" ? "editor-only" : "split")}
+                      liveAtsScore={liveAtsScore}
+                      onOpenScore={() => setIsScoreOpen(true)}
+                      onToggleAi={() => setLeftPaneTab("copilot")}
+                      isAiOpen={false}
+                      onOpenImport={() => setImportModalOpen(true)}
+                    />
+                  ) : leftPaneTab === "copilot" ? (
+                    /* The user can view Copilot on the left and full PDF on the right! */
+                    <AiAssistant
+                      embedded={true}
+                      currentLatex={latexCode}
+                      onApplyChange={handleApplyAi}
+                      onUndoChange={handleUndoAi}
+                      targetJd={targetJd}
+                      onExecuteAutoBoost={handleExecuteAutoBoost}
+                      isBoosting={isBoosting}
+                      errorLog={errorLog}
+                      autoFixSignal={autoFixSignal}
+                      onSwitchToTailor={() => setLeftPaneTab("tailor")}
+                    />
+                  ) : (
+                    /* Tailor & ATS on the left, full PDF on the right! */
+                    <StudioTailorPanel
+                      currentLatex={latexCode}
+                      onApplyTailored={handleApplyTailored}
+                      onUndoTailor={() => handleUndoAi(previousLatex || "")}
+                      canUndo={Boolean(previousLatex)}
+                      onSwitchToEditor={() => setLeftPaneTab("editor")}
+                      onSwitchToCopilot={() => setLeftPaneTab("copilot")}
+                    />
+                  )
+                )}
+              </div>
+            )}
+
+            {/* Pro Draggable Split Divider on Desktop Only */}
+            {!isMobile && layoutMode === "split" && (
+              <div
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDoubleClick={() => setSplitRatio(50)}
+                title="Drag to resize panels • Double-click to reset 50/50"
+                className="group relative flex w-3 items-center justify-center cursor-col-resize select-none shrink-0 z-20"
+              >
+                <div className="flex h-10 w-1.5 items-center justify-center rounded-full bg-zinc-800/90 border border-zinc-700/60 shadow-sm group-hover:bg-emerald-400 group-hover:border-emerald-300 group-hover:h-16 group-hover:shadow-[0_0_12px_rgba(52,211,153,0.6)] group-active:bg-emerald-400 group-active:h-16 transition-all duration-200">
+                  <div className="h-4 w-0.5 rounded-full bg-zinc-600 group-hover:bg-zinc-950 transition-colors" />
+                </div>
+              </div>
+            )}
+
+            {/* Right Column: PDF Preview Viewport */}
+            {(!isMobile ? layoutMode !== "editor-only" : mobileTab === "preview") && (
+              <div
+                style={{
+                  width: !isMobile && layoutMode === "split" ? `${100 - splitRatio}%` : "100%",
+                  minWidth: !isMobile && layoutMode === "split" ? "280px" : undefined,
+                }}
+                className="h-full min-h-0 transition-[width] duration-75 w-full"
+              >
+                <PdfViewer
+                  pdfUrl={pdfUrl}
+                  latexCode={latexCode}
+                  isCompiling={isCompiling}
+                  errorLog={errorLog}
+                  onRetry={() => triggerCompile(latexCode)}
+                  onOpenScore={() => setIsScoreOpen(true)}
+                  atsScore={liveAtsScore}
+                  onNavigateToLine={handleNavigateToLine}
+                  onAutoFixError={handleAutoFixError}
+                  viewMode={layoutMode === "preview-only" ? "preview" : "split"}
+                  onViewModeChange={(m) => setLayoutMode(m === "preview" ? "preview-only" : m === "editor" ? "editor-only" : "split")}
+                />
+              </div>
+            )}
+          </>
         )}
 
         {/* Mobile Floating Quick Switch Bar */}
@@ -464,7 +778,7 @@ export default function StudioPage() {
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-950/95 p-1 shadow-2xl backdrop-blur-xl animate-in slide-in-from-bottom-2">
             <button
               onClick={() => setMobileTab("editor")}
-              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all touch-manipulation ${
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all touch-manipulation ${
                 mobileTab === "editor"
                   ? "bg-emerald-500 text-zinc-950 shadow-md font-bold"
                   : "text-zinc-400 hover:text-white"
@@ -474,18 +788,40 @@ export default function StudioPage() {
               <span>Editor</span>
             </button>
             <button
+              onClick={() => setMobileTab("copilot")}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all touch-manipulation ${
+                mobileTab === "copilot"
+                  ? "bg-emerald-500 text-zinc-950 shadow-md font-bold"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Copilot</span>
+            </button>
+            <button
+              onClick={() => setMobileTab("tailor")}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all touch-manipulation ${
+                mobileTab === "tailor"
+                  ? "bg-teal-500 text-zinc-950 shadow-md font-bold"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Target className="h-3.5 w-3.5" />
+              <span>Tailor</span>
+            </button>
+            <button
               onClick={() => {
                 setMobileTab("preview");
                 if (!pdfUrl) triggerCompile(latexCode);
               }}
-              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all touch-manipulation ${
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all touch-manipulation ${
                 mobileTab === "preview"
                   ? "bg-emerald-500 text-zinc-950 shadow-md font-bold"
                   : "text-zinc-400 hover:text-white"
               }`}
             >
               <FileText className="h-3.5 w-3.5" />
-              <span>PDF Preview</span>
+              <span>PDF</span>
               {isCompiling && <Loader2 className="h-3 w-3 animate-spin text-zinc-950" />}
             </button>
           </div>
@@ -502,20 +838,6 @@ export default function StudioPage() {
           lastBoostResult={lastBoostResult}
           onUndoBoost={handleUndoBoost}
         />
-
-        {/* AI Assistant Drawer with 1-Click Auto-Boost & Syntax Self-Healing */}
-        <AiAssistant
-          currentLatex={latexCode}
-          onApplyChange={handleApplyAi}
-          onUndoChange={handleUndoAi}
-          targetJd={targetJd}
-          isOpen={isAiOpen}
-          onClose={() => setIsAiOpen(false)}
-          onExecuteAutoBoost={handleExecuteAutoBoost}
-          isBoosting={isBoosting}
-          errorLog={errorLog}
-          autoFixSignal={autoFixSignal}
-        />
       </main>
 
       {/* Pro-Grade Desktop Status Bar */}
@@ -527,6 +849,15 @@ export default function StudioPage() {
           </div>
           <span>•</span>
           <span className="text-zinc-500">{compileTimeMs}ms compile</span>
+          {isAutoHealing && (
+            <>
+              <span>•</span>
+              <span className="text-amber-400 flex items-center gap-1 animate-pulse">
+                <Sparkles className="h-3 w-3" />
+                <span>Auto-healing syntax...</span>
+              </span>
+            </>
+          )}
           {lastSavedTime && (
             <>
               <span>•</span>
@@ -560,7 +891,7 @@ export default function StudioPage() {
         onClose={() => setImportModalOpen(false)}
         onImportSuccess={(newCode) => {
           setLatexCode(newCode);
-          triggerCompile(newCode);
+          triggerCompile(newCode, true);
         }}
       />
     </div>

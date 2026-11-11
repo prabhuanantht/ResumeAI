@@ -212,7 +212,11 @@ TASK:
             diff_summary = data.get("diff_summary", ["Tailored resume to match target job profile."])
             
             tailored_latex, _ = sanitize_latex(tailored_latex)
-            return tailored_latex, missing_skills, diff_summary
+            pdf_bytes, compile_err, _ = compile_latex_to_pdf(tailored_latex)
+            if pdf_bytes:
+                return tailored_latex, missing_skills, diff_summary
+            else:
+                print(f"Tailored resume failed compilation ({compile_err}), falling back to algorithmic tailor.")
         except Exception as e:
             print(f"Gemini API error, using algorithmic tailoring: {e}")
 
@@ -754,14 +758,24 @@ FORMAT YOUR RESPONSE EXACTLY AS FOLLOWS (DO NOT USE JSON):
 ... [Complete compilable LaTeX source code]
 \\end{{document}}
 """
-                    repair_resp = await asyncio.wait_for(asyncio.to_thread(_call, repair_prompt), timeout=25.0)
-                    repaired_latex, _, _ = parse_delimited_output(repair_resp.text.strip())
-                    if repaired_latex and "\\documentclass" in repaired_latex:
-                        repaired_sanitized, _ = sanitize_latex(repaired_latex)
-                        pdf_bytes2, _, _ = compile_latex_to_pdf(repaired_sanitized)
-                        if pdf_bytes2:
-                            return repaired_sanitized, candidate_name or "Candidate"
-                        return repaired_sanitized, candidate_name or "Candidate"
+                    try:
+                        repair_resp = await asyncio.wait_for(asyncio.to_thread(_call, repair_prompt), timeout=25.0)
+                        repaired_latex, _, _ = parse_delimited_output(repair_resp.text.strip())
+                        if repaired_latex and "\\documentclass" in repaired_latex:
+                            repaired_sanitized, _ = sanitize_latex(repaired_latex)
+                            pdf_bytes2, _, _ = compile_latex_to_pdf(repaired_sanitized)
+                            if pdf_bytes2:
+                                return repaired_sanitized, candidate_name or "Candidate"
+                    except Exception as e_repair:
+                        print(f"Self-repair pass failed: {e_repair}")
+
+                # If Gemini-generated code did not compile cleanly, fallback to algorithmic parser
+                # to guarantee the user NEVER experiences a first-time compilation failure
+                fallback_latex, fb_name = algorithmic_resume_to_latex(resume_text)
+                sanitized_fb, _ = sanitize_latex(fallback_latex)
+                pdf_fb, _, _ = compile_latex_to_pdf(sanitized_fb)
+                if pdf_fb:
+                    return sanitized_fb, candidate_name or fb_name or "Candidate"
 
                 return sanitized, candidate_name or "Candidate"
         except Exception as e:

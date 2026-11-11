@@ -11,9 +11,9 @@ from backend.app.config import settings
 from backend.app.database import get_db_connection
 from backend.app.models import Profile, TailorResponse, AtsBreakdown
 from backend.app.services.templates import DEFAULT_PRIMARY_RESUME, CURATED_TEMPLATES
-from backend.app.services.compiler import sanitize_latex
+from backend.app.services.compiler import sanitize_latex, compile_latex_to_pdf
 from backend.app.services.ats_scorer import score_resume_against_job
-from backend.app.services.gemini import auto_boost_latex, convert_resume_to_latex
+from backend.app.services.gemini import auto_boost_latex, convert_resume_to_latex, algorithmic_resume_to_latex, chat_edit_latex
 
 router = APIRouter(prefix="/api/resumes", tags=["Resumes"])
 
@@ -79,6 +79,24 @@ async def upload_and_convert_resume(
         # 1. If file is already valid LaTeX (.tex, .latex, or has \documentclass and \begin{document}), preserve it 100%
         if lower_name.endswith((".tex", ".latex")) or (r"\documentclass" in extracted_text and r"\begin{document}" in extracted_text):
             sanitized, fixes = sanitize_latex(extracted_text)
+            
+            # Pre-verify compilation to guarantee zero first-time errors
+            pdf_bytes, compile_err, _ = compile_latex_to_pdf(sanitized)
+            if not pdf_bytes:
+                try:
+                    active_key = x_gemini_key or settings.GEMINI_API_KEY
+                    repaired_latex, _, _ = await chat_edit_latex(
+                        current_latex=sanitized,
+                        instruction="Fix all LaTeX syntax and compilation errors so this document compiles cleanly with zero errors",
+                        error_log=compile_err,
+                        gemini_api_key=active_key
+                    )
+                    pdf_test, _, _ = compile_latex_to_pdf(repaired_latex)
+                    if pdf_test:
+                        sanitized = repaired_latex
+                except Exception as e_repair:
+                    print(f"Failed to auto-repair uploaded tex: {e_repair}")
+
             name_m = (
                 re.search(r"\\textbf\{\\Huge\s*(?:\\scshape\s*)?([^}]+)\}", sanitized) or
                 re.search(r"\\name\{([^}]+)\}", sanitized) or
@@ -118,6 +136,18 @@ async def upload_and_convert_resume(
             gemini_api_key=active_key,
             model_name=gemini_model
         )
+
+        # Pre-verify compilation to guarantee zero first-time errors upon upload
+        pdf_bytes, compile_err, _ = compile_latex_to_pdf(latex_code)
+        if not pdf_bytes:
+            print(f"Initial conversion compile failed ({compile_err}), using algorithmic fallback guarantee.")
+            fb_latex, fb_name = algorithmic_resume_to_latex(extracted_text)
+            fb_sanitized, _ = sanitize_latex(fb_latex)
+            pdf_fb, _, _ = compile_latex_to_pdf(fb_sanitized)
+            if pdf_fb:
+                latex_code = fb_sanitized
+                if not candidate_name or candidate_name == "Candidate":
+                    candidate_name = fb_name or candidate_name
 
         # Baseline score calculation
         breakdown = score_resume_against_job(
